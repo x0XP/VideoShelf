@@ -1,15 +1,16 @@
 using System;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace VideoShelf {
 sealed partial class Shelf {
  MockupActionButton downloadVisual,streamVisual;
  Button chromeMin,chromeMax,chromeClose;
- Label collectionFilterCue,collectionEmptyCue;
+ Label collectionEmptyCue;
  Panel shellStatusBar;
- bool shellChromePrepared,inspectorPlaceholderPaintHooked;
+ bool shellChromePrepared,inspectorPlaceholderPaintHooked,libraryCueApplied;
 
  protected override void OnShown(EventArgs e){
   base.OnShown(e);
@@ -93,16 +94,9 @@ sealed partial class Shelf {
     shellStatusBar.Resize+=delegate{LayoutStatusBarVisuals();};
    }
   }
-  if(collectionFilterCue==null&&libraryFilter.Parent!=null){
-   collectionFilterCue=new Label{Text="Filter collections",BackColor=libraryFilter.BackColor,ForeColor=Color.FromArgb(132,153,173),TextAlign=ContentAlignment.MiddleLeft,Cursor=Cursors.IBeam,Font=libraryFilter.Font};
-   libraryFilter.Parent.Controls.Add(collectionFilterCue);
-   collectionFilterCue.Click+=delegate{libraryFilter.Focus();};
-   libraryFilter.TextChanged+=delegate{RefreshCollectionFilterCue();};
-   libraryFilter.Enter+=delegate{RefreshCollectionFilterCue();};
-   libraryFilter.Leave+=delegate{RefreshCollectionFilterCue();};
-  }
+  ApplyLibraryFilterCue();
   if(collectionEmptyCue==null){
-   collectionEmptyCue=new Label{TextAlign=ContentAlignment.MiddleCenter,BackColor=files.BackColor,ForeColor=XdolfTheme.Muted,Font=new Font("Segoe UI",10.5f),Visible=false};
+   collectionEmptyCue=new Label{TextAlign=ContentAlignment.MiddleCenter,BackColor=files.BackColor,ForeColor=XdolfTheme.Muted,Font=new Font("Segoe UI",10.5f),BorderStyle=BorderStyle.FixedSingle,Visible=false};
    collectionView.Controls.Add(collectionEmptyCue);collectionEmptyCue.BringToFront();
    collectionView.VisibleChanged+=delegate{RefreshCollectionVisualState();};
    files.SelectedIndexChanged+=delegate{RefreshCollectionVisualState();};
@@ -110,7 +104,16 @@ sealed partial class Shelf {
    statusLeft.TextChanged+=delegate{if(collectionView.Visible)RefreshCollectionVisualState();};
   }
   if(!inspectorPlaceholderPaintHooked){inspectorImage.Paint+=PaintInspectorArtworkPlaceholder;inspectorPlaceholderPaintHooked=true;}
-  LayoutStatusBarVisuals();LayoutCollectionAuxVisuals();RefreshCollectionFilterCue();RefreshCollectionVisualState();
+  LayoutStatusBarVisuals();LayoutCollectionAuxVisuals();RefreshCollectionVisualState();
+ }
+ void ApplyLibraryFilterCue(){
+  if(libraryCueApplied)return;
+  libraryFilter.HandleCreated+=delegate{SetCueBanner();};
+  if(libraryFilter.IsHandleCreated)SetCueBanner();
+ }
+ void SetCueBanner(){
+  if(libraryFilter.IsDisposed||!libraryFilter.IsHandleCreated)return;
+  try{SendMessage(libraryFilter.Handle,0x1501,IntPtr.Zero,"Filter collections");libraryCueApplied=true;}catch{}
  }
  void LayoutStatusBarVisuals(){
   if(shellStatusBar==null||shellStatusBar.IsDisposed)return;
@@ -119,28 +122,19 @@ sealed partial class Shelf {
   int rightX=leftWidth+36;statusRight.SetBounds(rightX,6,Math.Max(0,w-rightX-18),18);
  }
  void LayoutCollectionAuxVisuals(){
-  if(collectionFilterCue!=null&&libraryFilter.Parent!=null){
-   if(collectionFilterCue.Parent!=libraryFilter.Parent)collectionFilterCue.Parent=libraryFilter.Parent;
-   collectionFilterCue.SetBounds(libraryFilter.Left+9,libraryFilter.Top+4,Math.Max(40,libraryFilter.Width-18),Math.Max(18,libraryFilter.Height-8));
-   collectionFilterCue.BringToFront();
-  }
   if(collectionEmptyCue!=null){
-   collectionEmptyCue.SetBounds(files.Left+1,files.Top+25,Math.Max(0,files.Width-2),82);
+   collectionEmptyCue.Bounds=files.Bounds;
    if(collectionEmptyCue.Visible)collectionEmptyCue.BringToFront();
   }
- }
- void RefreshCollectionFilterCue(){
-  if(collectionFilterCue==null)return;
-  collectionFilterCue.Visible=libraryFilter.Visible&&!libraryFilter.Focused&&string.IsNullOrEmpty(libraryFilter.Text);
-  if(collectionFilterCue.Visible)collectionFilterCue.BringToFront();
  }
  internal void RefreshCollectionVisualState(){
   if(files==null||files.IsDisposed)return;
   bool empty=files.Items.Count==0;
-  playLocal.Enabled=files.SelectedItems.Count>0;
+  playLocal.Enabled=!empty&&files.SelectedItems.Count>0;
   int visibleRows=Math.Max(1,(Math.Max(0,files.ClientSize.Height-25))/22);
-  files.Scrollable=files.Items.Count>visibleRows;
-  NativeDarkScroll.Apply(files);
+  if(!empty)files.Scrollable=files.Items.Count>visibleRows;
+  files.Visible=!empty;
+  if(files.Visible)NativeDarkScroll.Apply(files);
   if(collectionEmptyCue!=null){
    bool scanning=statusLeft.Text.StartsWith("Scanning collection",StringComparison.OrdinalIgnoreCase);
    collectionEmptyCue.Text=scanning?"Scanning local videos…":"No local videos in this collection.\r\nUse Find online to search seeded metadata.";
@@ -261,5 +255,6 @@ sealed partial class Shelf {
   downloadVisual.Enabled=downloadOnline.Enabled;streamVisual.Enabled=streamOnline.Enabled;
   if(finalPolishApplied)LayoutFinalPolish();
  }
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern IntPtr SendMessage(IntPtr hWnd,int msg,IntPtr wParam,string lParam);
 }
 }

@@ -65,7 +65,7 @@ internal sealed class FileListForm : Form
         int type = 82, size = 125;
         files.Columns[1].Width = type;
         files.Columns[2].Width = size;
-        files.Columns[0].Width = Math.Max(220, files.ClientSize.Width - type - size - 4);
+        files.Columns[0].Width = Math.Max(220, files.ClientSize.Width - type - size);
         int visibleRows = Math.Max(1, (Math.Max(0, files.ClientSize.Height - 25)) / 22);
         files.Scrollable = files.Items.Count > visibleRows;
         NativeTheme.Apply(files);

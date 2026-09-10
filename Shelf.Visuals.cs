@@ -53,7 +53,7 @@ sealed partial class Shelf {
   fittingFileColumns=true;
   try{
    int last=files.Columns.Count-1,fixedWidth=0;for(int i=0;i<last;i++)fixedWidth+=files.Columns[i].Width;
-   int desired=Math.Max(220,files.ClientSize.Width-fixedWidth-2);
+   int desired=Math.Max(220,files.ClientSize.Width-fixedWidth);
    if(files.Columns[last].Width!=desired)files.Columns[last].Width=desired;
    NativeDarkScroll.Apply(files);
   }catch{}finally{fittingFileColumns=false;}
