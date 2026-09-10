@@ -12,6 +12,8 @@ sealed partial class Shelf {
   ApplyExtendedVisuals();
   EnsureMockupActions();
   LayoutMockupShell();
+  ApplyFinalPolish();
+  LayoutFinalPolish();
  }
  protected override void OnResize(EventArgs e){
   base.OnResize(e);
@@ -43,6 +45,7 @@ sealed partial class Shelf {
 
   navHome.Top=116;navSearch.Top=170;navCollections.Top=224;navDownloads.Top=278;navStreaming.Top=332;navSettings.Top=386;
   LayoutSearchSurface();
+  if(finalPolishApplied)LayoutFinalPolish();
   body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
  }
  void LayoutSearchSurface(){
@@ -61,7 +64,7 @@ sealed partial class Shelf {
   if(results!=null){results.Dock=DockStyle.None;results.SetBounds(0,filterHeight,contentWidth,contentHeight);results.Anchor=AnchorStyles.Top|AnchorStyles.Bottom|AnchorStyles.Left;results.SendToBack();}
 
   onlineCards.Padding=new Padding(22,0,10,16);LayoutExtendedVisuals();
-  LayoutInspector();searchView.PerformLayout();ResizeOnlineCards();
+  LayoutInspector();if(finalPolishApplied)LayoutFinalPolish();searchView.PerformLayout();ResizeOnlineCards();
  }
  internal void LayoutSearchForCapture(int width,int height){
   searchView.Dock=DockStyle.None;searchView.SetBounds(0,0,width,height);searchView.Anchor=AnchorStyles.Top|AnchorStyles.Left;LayoutSearchSurface();searchView.PerformLayout();
@@ -89,6 +92,7 @@ sealed partial class Shelf {
   copyLink.SetBounds(pad,bottomY,half,47);
   viewFiles.SetBounds(pad+half+12,bottomY,Math.Max(90,inner-half-12),47);
   downloadVisual.Enabled=downloadOnline.Enabled;streamVisual.Enabled=streamOnline.Enabled;
+  if(finalPolishApplied)LayoutFinalPolish();
  }
 }
 }
