@@ -29,21 +29,27 @@ static class ScreenshotHarness {
   }
  }
 
- public static void CaptureLibraryVideos(string root,string collectionName,string outputPath,int expectedVideos){
-  if(string.IsNullOrWhiteSpace(root)||!Directory.Exists(root))throw new DirectoryNotFoundException("Screenshot library does not exist: "+root);
-  if(string.IsNullOrWhiteSpace(collectionName))throw new ArgumentException("A collection name is required.");
-  if(expectedVideos<1)throw new ArgumentOutOfRangeException("expectedVideos");
-
-  Application.EnableVisualStyles();
-  Application.SetCompatibleTextRenderingDefault(false);
-  using(var shelf=new Shelf()){
-   PrepareWindow(shelf);
-   shelf.PrepareScreenshotLibrary(root);
-   if(!shelf.OpenScreenshotCollection(collectionName,expectedVideos))throw new Exception("VideoShelf did not discover the expected real video files in \""+collectionName+"\".");
-   Settle(shelf);
-   SaveWindow(shelf,outputPath);
+ public static void CaptureOnlineResults(string displayName,string query,string torznabUrl,string outputPath,int expectedResults){
+  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-online-screenshot-"+Guid.NewGuid().ToString("N"));
+  try{
+   Directory.CreateDirectory(root);
+   FolderNaming.CreateCollection(root,displayName);
+   Application.EnableVisualStyles();
+   Application.SetCompatibleTextRenderingDefault(false);
+   using(var shelf=new Shelf()){
+    PrepareWindow(shelf);
+    shelf.PrepareScreenshotLibrary(root);
+    if(!shelf.PrepareOnlineScreenshot(displayName,query,torznabUrl,expectedResults))
+     throw new Exception("VideoShelf did not receive enough seeded online results from the Torznab source.");
+    DateTime until=DateTime.UtcNow.AddSeconds(8);
+    while(DateTime.UtcNow<until&&shelf.ScreenshotThumbnailsLoading){Application.DoEvents();Thread.Sleep(50);}
+    Settle(shelf);
+    SaveWindow(shelf,outputPath);
+   }
+   Verify(outputPath,5000);
+  }finally{
+   try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}
   }
-  Verify(outputPath,5000);
  }
 
  static void PrepareWindow(Shelf shelf){
@@ -76,6 +82,8 @@ static class ScreenshotHarness {
 }
 
 sealed partial class Shelf {
+ internal bool ScreenshotThumbnailsLoading { get { return thumbnailsLoading; } }
+
  internal void PrepareScreenshotLibrary(string path){
   generation++;
   portraitScan.Cancel();
@@ -117,17 +125,37 @@ sealed partial class Shelf {
   return person.Photo!=null;
  }
 
- internal bool OpenScreenshotCollection(string name,int expectedVideos){
-  Person person=people.FirstOrDefault(p=>p.Name.Equals(name,StringComparison.OrdinalIgnoreCase));
+ internal bool PrepareOnlineScreenshot(string displayName,string query,string torznabUrl,int expectedResults){
+  Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));
   if(person==null)return false;
-  OpenPerson(person);
-  DateTime until=DateTime.UtcNow.AddSeconds(8);
-  while(DateTime.UtcNow<until){
-   Application.DoEvents();
-   if(current==person&&files.Items.Count>=expectedVideos)return true;
-   Thread.Sleep(50);
-  }
-  return current==person&&files.Items.Count>=expectedVideos;
+  var source=new OnlineSettings{Url=torznabUrl,ApiKey="",AutoSearch=false};
+  List<OnlineResult> found=TorznabSearch.Search(query,source,CancellationToken.None).GetAwaiter().GetResult();
+  found=found.Where(r=>r.Seeders>0).Take(8).ToList();
+  if(found.Count<expectedResults)return false;
+
+  generation++;
+  current=person;
+  onlineMode=true;
+  onlineSearching=false;
+  onlineError="";
+  onlineQueryFor=query;
+  onlineSettings=source;
+  onlineResults=found;
+  ClearSearch();
+  SetSort(true);
+  back.Visible=true;
+  cards.Visible=false;
+  detail.Visible=true;
+  localDetail.Visible=false;
+  onlineDetail.Visible=true;
+  onlineDetail.BringToFront();
+  title.Text=displayName;
+  SetHeader(true);
+  subtitle.Text="Online results for "+displayName;
+  onlineQuery.Text=query;
+  RenderOnline();
+  Application.DoEvents();
+  return onlineFiles.Items.Count>=expectedResults;
  }
 }
 }
