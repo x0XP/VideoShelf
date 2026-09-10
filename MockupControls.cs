@@ -71,11 +71,11 @@ sealed class OnlineResultCard : Control {
   using(var b=new SolidBrush(Selected?Color.FromArgb(10,28,42):(hot?Color.FromArgb(13,25,35):Color.FromArgb(10,19,27))))UiPaint.FillRound(g,b,outer,7);
   using(var p=new Pen(Selected?XdolfTheme.AccentBlue:Color.FromArgb(31,48,61),Selected?2f:1f))UiPaint.DrawRound(g,p,new Rectangle(Selected?1:0,Selected?1:0,Width-(Selected?3:1),Height-(Selected?3:1)),7);
   var ir=new Rectangle(9,8,146,78);DrawPreview(g,ir);
-  int left=166;int metricsWidth=245;int textRight=Math.Max(left+120,Width-metricsWidth);var tr=new Rectangle(left,10,textRight-left-8,22);
+  int left=166;int metricsWidth=245;int textRight=Math.Max(left+120,Width-metricsWidth);var tr=new Rectangle(left,10,Math.Max(50,textRight-left-8),22);
   using(var f=new Font("Segoe UI",9.8f,FontStyle.Bold))TextRenderer.DrawText(g,Result.Title,f,tr,Color.White,TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding);
-  int tagX=left;foreach(string tag in MetadataLabels.Tags(Result.Title,Result.Resolution))tagX+=DrawTag(g,tag,tagX,38);
+  int tagX=left,tagRight=Math.Max(left,textRight-6);foreach(string tag in MetadataLabels.Tags(Result.Title,Result.Resolution)){int tagWidth=MeasureTag(tag);if(tagX+tagWidth>tagRight)break;tagX+=DrawTag(g,tag,tagX,38);}
   string secondary=(Result.Size>0?Shelf.SizeText(Result.Size):"—")+(Result.Published==DateTime.MinValue?"":"   •   "+Result.Published.ToLocalTime().ToString("yyyy-MM-dd"));
-  using(var f=new Font("Segoe UI",8.4f))TextRenderer.DrawText(g,secondary,f,new Rectangle(left,66,textRight-left,18),Color.FromArgb(158,177,196),TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding);
+  using(var f=new Font("Segoe UI",8.4f))TextRenderer.DrawText(g,secondary,f,new Rectangle(left,66,Math.Max(40,textRight-left),18),Color.FromArgb(158,177,196),TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding);
   int sx=Width-250,lx=Width-160,srcx=Width-78;
   using(var f=new Font("Segoe UI",9.5f,FontStyle.Bold))TextRenderer.DrawText(g,Result.Seeders.ToString("N0")+" ↑",f,new Rectangle(sx,30,78,20),Color.FromArgb(72,235,132),TextFormatFlags.SingleLine|TextFormatFlags.NoPadding);
   using(var f=new Font("Segoe UI",8f))TextRenderer.DrawText(g,"seeders",f,new Rectangle(sx,54,70,18),Color.FromArgb(158,177,196),TextFormatFlags.SingleLine|TextFormatFlags.NoPadding);
@@ -87,6 +87,7 @@ sealed class OnlineResultCard : Control {
   using(var path=UiPaint.Round(r,4)){g.SetClip(path);if(preview!=null){float scale=Math.Max((float)r.Width/preview.Width,(float)r.Height/preview.Height);float sw=r.Width/scale,sh=r.Height/scale;g.DrawImage(preview,r,new RectangleF((preview.Width-sw)/2,(preview.Height-sh)/2,sw,sh),GraphicsUnit.Pixel);}else{using(var b=new SolidBrush(Color.FromArgb(20,35,48)))g.FillRectangle(b,r);using(var p=new Pen(Color.FromArgb(49,71,91),2)){g.DrawLine(p,r.Left+14,r.Bottom-15,r.Left+54,r.Top+27);g.DrawLine(p,r.Left+54,r.Top+27,r.Left+78,r.Bottom-25);g.DrawLine(p,r.Left+78,r.Bottom-25,r.Right-15,r.Top+19);}}g.ResetClip();}
   using(var p=new Pen(Color.FromArgb(46,67,84)))UiPaint.DrawRound(g,p,r,4);
  }
+ int MeasureTag(string tag){using(var f=new Font("Segoe UI",7.8f))return Math.Min(100,TextRenderer.MeasureText(tag,f).Width+14)+7;}
  int DrawTag(Graphics g,string tag,int x,int y){
   using(var f=new Font("Segoe UI",7.8f)){int w=Math.Min(100,TextRenderer.MeasureText(tag,f).Width+14);var r=new Rectangle(x,y,w,23);using(var b=new SolidBrush(Color.FromArgb(19,39,56)))UiPaint.FillRound(g,b,r,4);using(var p=new Pen(Color.FromArgb(51,84,111)))UiPaint.DrawRound(g,p,r,4);TextRenderer.DrawText(g,tag,f,r,Color.FromArgb(220,231,241),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);return w+7;}
  }
