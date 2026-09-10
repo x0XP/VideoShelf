@@ -10,7 +10,12 @@ using System.Threading.Tasks;
 
 namespace VideoShelf {
 static class Program {
- [STAThread] static void Main() { Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); Application.Run(new Shelf()); }
+ [STAThread] static void Main(string[] args) {
+  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){
+   try{FolderNaming.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
+  }
+  Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); Application.Run(new Shelf());
+ }
 }
 sealed class Person { public string Path, Name; public Image Photo; public string PhotoSource="", PhotoError=""; public int PhotoVersion; }
 sealed class Video { public string Path, Name, Relative; public long Size; public DateTime Modified; }
