@@ -20,22 +20,31 @@ jobs:
       - name: Render real re:zero GUI screenshot
         shell: cmd
         run: VideoShelf.exe --screenshot-rezero "%RUNNER_TEMP%\VideoShelf-rezero.png"
-      - name: Verify screenshot
+      - name: Render re:zero View videos screenshot
+        shell: cmd
+        run: VideoShelf.exe --screenshot-rezero-videos "%RUNNER_TEMP%\VideoShelf-rezero-videos.png"
+      - name: Verify screenshots
         shell: powershell
         run: |
-          $path = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero.png'
-          if (!(Test-Path $path)) { throw 'VideoShelf screenshot was not created.' }
-          if ((Get-Item $path).Length -lt 1000) { throw 'VideoShelf screenshot is unexpectedly small.' }
-          Copy-Item $path .\VideoShelf-rezero.png
+          $library = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero.png'
+          $videos = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-videos.png'
+          if (!(Test-Path $library)) { throw 'VideoShelf library screenshot was not created.' }
+          if (!(Test-Path $videos)) { throw 'VideoShelf View videos screenshot was not created.' }
+          if ((Get-Item $library).Length -lt 5000) { throw 'VideoShelf library screenshot is unexpectedly small.' }
+          if ((Get-Item $videos).Length -lt 5000) { throw 'VideoShelf View videos screenshot is unexpectedly small.' }
+          Copy-Item $library .\VideoShelf-rezero.png
+          Copy-Item $videos .\VideoShelf-rezero-videos.png
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: VideoShelf-windows
           path: VideoShelf.exe
           if-no-files-found: error
-      - name: Upload re:zero screenshot
+      - name: Upload re:zero screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: VideoShelf-rezero-screenshot
-          path: VideoShelf-rezero.png
+          name: VideoShelf-rezero-screenshots
+          path: |
+            VideoShelf-rezero.png
+            VideoShelf-rezero-videos.png
           if-no-files-found: error
