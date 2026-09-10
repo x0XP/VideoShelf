@@ -8,6 +8,8 @@ sealed partial class Shelf {
  readonly Panel collectionsBrowserView=new Panel();
  Label dashboardLibrary,dashboardCollections,dashboardDownloads,dashboardStreams,dashboardOnline,dashboardHint;
  Button dashboardCollectionsButton,dashboardSearchButton,dashboardAddButton,dashboardLibraryButton;
+ Panel statCollections,statDownloads,statStreams,statOnline,dashboardQuickPanel,dashboardInfoPanel;
+ Label dashboardQuickTitle,dashboardInfoTitle;
  bool homeDashboardReady;
 
  void EnsureHomeDashboard(){
@@ -32,23 +34,23 @@ sealed partial class Shelf {
   statusRight.TextChanged+=delegate{if(section==ShellSection.Home)RefreshDashboardHome();};
   statusLeft.TextChanged+=delegate{if(section==ShellSection.Home)RefreshDashboardHome();};
 
-  RefreshDashboardHome();
+  LayoutDashboardHome();RefreshDashboardHome();
  }
 
  void BuildDashboardHome(){
-  var heading=new Label{Text="Home",Left=30,Top=26,Width=500,Height=40,ForeColor=Color.White,Font=new Font("Segoe UI",23,FontStyle.Bold)};
+  var heading=new Label{Text="Home",Name="DashboardHeading",Left=30,Top=26,Width=500,Height=40,ForeColor=Color.White,Font=new Font("Segoe UI",23,FontStyle.Bold)};
   dashboardLibrary=new Label{Left=31,Top=69,Width=900,Height=23,ForeColor=XdolfTheme.Muted,AutoEllipsis=true};
   homeView.Controls.AddRange(new Control[]{heading,dashboardLibrary});
 
-  int top=122;
-  homeView.Controls.Add(MakeDashboardStat("COLLECTIONS",out dashboardCollections,30,top));
-  homeView.Controls.Add(MakeDashboardStat("ACTIVE DOWNLOADS",out dashboardDownloads,250,top));
-  homeView.Controls.Add(MakeDashboardStat("ACTIVE STREAMS",out dashboardStreams,470,top));
-  homeView.Controls.Add(MakeDashboardStat("ONLINE SEARCH",out dashboardOnline,690,top));
+  statCollections=MakeDashboardStat("COLLECTIONS",out dashboardCollections,30,122);
+  statDownloads=MakeDashboardStat("ACTIVE DOWNLOADS",out dashboardDownloads,250,122);
+  statStreams=MakeDashboardStat("ACTIVE STREAMS",out dashboardStreams,470,122);
+  statOnline=MakeDashboardStat("ONLINE SEARCH",out dashboardOnline,690,122);
+  homeView.Controls.AddRange(new Control[]{statCollections,statDownloads,statStreams,statOnline});
 
-  var quickTitle=new Label{Text="Quick actions",Left=30,Top=274,Width=300,Height=28,ForeColor=Color.White,Font=new Font("Segoe UI",14,FontStyle.Bold)};
-  var quickPanel=new Panel{Left=30,Top=313,Width=880,Height=126,BackColor=Color.FromArgb(9,18,26),Anchor=AnchorStyles.Top|AnchorStyles.Left|AnchorStyles.Right};
-  quickPanel.Paint+=delegate(object s,PaintEventArgs e){using(var p=new Pen(XdolfTheme.Outline))e.Graphics.DrawRectangle(p,0,0,quickPanel.Width-1,quickPanel.Height-1);using(var b=new SolidBrush(XdolfTheme.AccentBlue))e.Graphics.FillRectangle(b,0,0,quickPanel.Width,2);using(var b=new SolidBrush(XdolfTheme.AccentRed))e.Graphics.FillRectangle(b,0,2,3,quickPanel.Height-2);};
+  dashboardQuickTitle=new Label{Text="Quick actions",Left=30,Top=274,Width=300,Height=28,ForeColor=Color.White,Font=new Font("Segoe UI",14,FontStyle.Bold)};
+  dashboardQuickPanel=new Panel{Left=30,Top=313,Width=880,Height=126,BackColor=Color.FromArgb(9,18,26)};
+  dashboardQuickPanel.Paint+=delegate(object s,PaintEventArgs e){using(var p=new Pen(XdolfTheme.Outline))e.Graphics.DrawRectangle(p,0,0,dashboardQuickPanel.Width-1,dashboardQuickPanel.Height-1);using(var b=new SolidBrush(XdolfTheme.AccentBlue))e.Graphics.FillRectangle(b,0,0,dashboardQuickPanel.Width,2);using(var b=new SolidBrush(XdolfTheme.AccentRed))e.Graphics.FillRectangle(b,0,2,3,dashboardQuickPanel.Height-2);};
 
   dashboardCollectionsButton=DashboardButton("Browse collections",20,23,190);
   dashboardSearchButton=DashboardButton("Search online",222,23,165);
@@ -58,17 +60,17 @@ sealed partial class Shelf {
   dashboardSearchButton.Click+=delegate{ShowSearch();};
   dashboardAddButton.Click+=delegate{AddLibraryFolder();};
   dashboardLibraryButton.Click+=delegate{choose.PerformClick();};
-  quickPanel.Controls.AddRange(new Control[]{dashboardCollectionsButton,dashboardSearchButton,dashboardAddButton,dashboardLibraryButton});
+  dashboardQuickPanel.Controls.AddRange(new Control[]{dashboardCollectionsButton,dashboardSearchButton,dashboardAddButton,dashboardLibraryButton});
 
   dashboardHint=new Label{Left=20,Top=77,Width=830,Height=28,ForeColor=XdolfTheme.Muted,Font=new Font("Segoe UI",9f),AutoEllipsis=true};
-  quickPanel.Controls.Add(dashboardHint);
-  homeView.Controls.AddRange(new Control[]{quickTitle,quickPanel});
+  dashboardQuickPanel.Controls.Add(dashboardHint);
+  homeView.Controls.AddRange(new Control[]{dashboardQuickTitle,dashboardQuickPanel});
 
-  var infoTitle=new Label{Text="Library overview",Left=30,Top=480,Width=300,Height=28,ForeColor=Color.White,Font=new Font("Segoe UI",14,FontStyle.Bold)};
-  var info=new Panel{Left=30,Top=519,Width=880,Height=118,BackColor=Color.FromArgb(8,17,25),Anchor=AnchorStyles.Top|AnchorStyles.Left|AnchorStyles.Right};
-  info.Paint+=delegate(object s,PaintEventArgs e){using(var p=new Pen(XdolfTheme.Outline))e.Graphics.DrawRectangle(p,0,0,info.Width-1,info.Height-1);};
-  var infoText=new Label{Text="Collections are folders inside your selected VideoShelf library. Open Collections to browse artwork and local videos, or Search to find seeded torrent metadata. Online search never starts a media transfer until you explicitly choose Download or Stream.",Left=20,Top=20,Width=830,Height=72,ForeColor=XdolfTheme.Text,Font=new Font("Segoe UI",9.5f)};
-  info.Controls.Add(infoText);homeView.Controls.AddRange(new Control[]{infoTitle,info});
+  dashboardInfoTitle=new Label{Text="Library overview",Left=30,Top=480,Width=300,Height=28,ForeColor=Color.White,Font=new Font("Segoe UI",14,FontStyle.Bold)};
+  dashboardInfoPanel=new Panel{Left=30,Top=519,Width=880,Height=118,BackColor=Color.FromArgb(8,17,25)};
+  dashboardInfoPanel.Paint+=delegate(object s,PaintEventArgs e){using(var p=new Pen(XdolfTheme.Outline))e.Graphics.DrawRectangle(p,0,0,dashboardInfoPanel.Width-1,dashboardInfoPanel.Height-1);};
+  var infoText=new Label{Name="DashboardInfoText",Text="Collections are folders inside your selected VideoShelf library. Open Collections to browse artwork and local videos, or Search to find seeded torrent metadata. Online search never starts a media transfer until you explicitly choose Download or Stream.",Left=20,Top=20,Width=830,Height=72,ForeColor=XdolfTheme.Text,Font=new Font("Segoe UI",9.5f)};
+  dashboardInfoPanel.Controls.Add(infoText);homeView.Controls.AddRange(new Control[]{dashboardInfoTitle,dashboardInfoPanel});
  }
 
  Panel MakeDashboardStat(string title,out Label value,int left,int top){
@@ -79,9 +81,35 @@ sealed partial class Shelf {
   panel.Controls.AddRange(new Control[]{caption,value});return panel;
  }
 
- Button DashboardButton(string text,int left,int top,int width){
-  var button=new Button{Text=text,Left=left,Top=top,Width=width,Height=38};
-  XdolfTheme.StyleButton(button);return button;
+ Button DashboardButton(string text,int left,int top,int width){var button=new Button{Text=text,Left=left,Top=top,Width=width,Height=38};XdolfTheme.StyleButton(button);return button;}
+
+ void LayoutDashboardHome(){
+  if(!homeDashboardReady||homeView.ClientSize.Width<=0)return;
+  int margin=30,gap=14,available=Math.Max(520,homeView.ClientSize.Width-margin*2);
+  dashboardLibrary.Width=Math.Max(300,available);
+  int columns=available<760?2:4;
+  int statWidth=(available-gap*(columns-1))/columns;
+  Panel[] stats={statCollections,statDownloads,statStreams,statOnline};
+  for(int i=0;i<stats.Length;i++){
+   int row=i/columns,col=i%columns;
+   stats[i].SetBounds(margin+col*(statWidth+gap),122+row*126,statWidth,112);
+   foreach(Label label in stats[i].Controls.OfType<Label>())label.Width=Math.Max(80,statWidth-30);
+  }
+  int rows=(stats.Length+columns-1)/columns;
+  int quickTitleTop=122+rows*126+22;
+  dashboardQuickTitle.Top=quickTitleTop;
+  dashboardQuickPanel.SetBounds(margin,quickTitleTop+39,available,available<720?176:126);
+  int buttonGap=12,buttonCount=available<720?2:4,buttonWidth=(available-40-buttonGap*(buttonCount-1))/buttonCount;
+  Button[] buttons={dashboardCollectionsButton,dashboardSearchButton,dashboardAddButton,dashboardLibraryButton};
+  for(int i=0;i<buttons.Length;i++){
+   int row=i/buttonCount,col=i%buttonCount;
+   buttons[i].SetBounds(20+col*(buttonWidth+buttonGap),23+row*50,buttonWidth,38);
+  }
+  dashboardHint.SetBounds(20,dashboardQuickPanel.Height-43,Math.Max(120,available-40),26);
+  int infoTop=dashboardQuickPanel.Bottom+40;
+  dashboardInfoTitle.Top=infoTop;
+  dashboardInfoPanel.SetBounds(margin,infoTop+39,available,118);
+  var info=dashboardInfoPanel.Controls.OfType<Label>().FirstOrDefault(l=>l.Name=="DashboardInfoText");if(info!=null)info.Width=Math.Max(150,available-40);
  }
 
  void RefreshDashboardHome(){
@@ -91,7 +119,6 @@ sealed partial class Shelf {
   dashboardDownloads.Text=TransferBridge.ActiveDownloads.ToString();
   dashboardStreams.Text=TransferBridge.ActiveStreams.ToString();
   dashboardOnline.Text=onlineSettings.Configured?"CUSTOM":"BUILT-IN";
-  dashboardOnline.Font=new Font("Segoe UI",onlineSettings.Configured?13f:13f,FontStyle.Bold);
   dashboardAddButton.Enabled=DirectoryExists(root);
   dashboardSearchButton.Enabled=true;
   dashboardHint.Text=root.Length==0?"Choose a library folder, then add or browse collections.":people.Count==0?"Your library is ready. Add your first collection to begin.":people.Count+" collection"+(people.Count==1?" is":"s are")+" available. Use Collections to browse them.";
@@ -99,14 +126,12 @@ sealed partial class Shelf {
 
  bool DirectoryExists(string path){try{return !string.IsNullOrWhiteSpace(path)&&System.IO.Directory.Exists(path);}catch{return false;}}
 
- void HideAllMainViews(){
-  foreach(Control v in new Control[]{homeView,collectionsBrowserView,collectionView,searchView,downloadsView,streamingView,settingsView})v.Visible=false;
- }
+ void HideAllMainViews(){foreach(Control v in new Control[]{homeView,collectionsBrowserView,collectionView,searchView,downloadsView,streamingView,settingsView})v.Visible=false;}
 
  internal void ShowDashboardHome(){
   EnsureHomeDashboard();HideAllMainViews();section=ShellSection.Home;homeView.Visible=true;homeView.BringToFront();
   navHome.SetActive(true);navSearch.SetActive(false);navCollections.SetActive(false);navDownloads.SetActive(false);navStreaming.SetActive(false);navSettings.SetActive(false);
-  RefreshDashboardHome();RefreshActivityBadges();SetStatus("Ready",root.Length==0?"Choose a library folder to begin.":people.Count+" collections");
+  LayoutDashboardHome();RefreshDashboardHome();RefreshActivityBadges();SetStatus("Ready",root.Length==0?"Choose a library folder to begin.":people.Count+" collections");
  }
 
  internal void ShowCollectionsBrowser(){
