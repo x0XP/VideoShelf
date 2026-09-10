@@ -20,37 +20,37 @@ jobs:
       - name: Render real re:zero GUI screenshot
         shell: cmd
         run: VideoShelf.exe --screenshot-rezero "%RUNNER_TEMP%\VideoShelf-rezero.png"
-      - name: Download genuine public video files
+      - name: Render live re:zero torrent results without media download
         shell: powershell
         run: |
-          $root = Join-Path $env:RUNNER_TEMP 'VideoShelf-real-library'
-          $collection = Join-Path $root 'Blender Demos'
-          New-Item -ItemType Directory -Force -Path $collection | Out-Null
-          $files = @(
-            @{ Name = 'ton_bug_1999.mpg'; Url = 'https://download.blender.org/demo/movies/ton_bug_1999.mpg' },
-            @{ Name = 'Vinicius-Zanete-Novaes_Penalti.avi'; Url = 'https://download.blender.org/demo/movies/Vinicius-Zanete-Novaes_Penalti.avi' },
-            @{ Name = 'seamcut_blender242.mov'; Url = 'https://download.blender.org/demo/movies/seamcut_blender242.mov' }
+          $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
+          $sources = @(
+            'https://bitmagnetfortheweebs.midnightignite.me/torznab/api',
+            'https://www.torlock.com/torznab/api'
           )
-          foreach ($file in $files) {
-            $out = Join-Path $collection $file.Name
-            Invoke-WebRequest -Uri $file.Url -OutFile $out -UseBasicParsing
-            if (!(Test-Path $out) -or (Get-Item $out).Length -lt 100000) { throw "Real media download failed: $($file.Name)" }
+          $success = $false
+          foreach ($source in $sources) {
+            if (Test-Path $output) { Remove-Item $output -Force }
+            $args = @('--screenshot-online','re:zero','re zero',$source,$output,'3')
+            $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow
+            if ($process.ExitCode -eq 0 -and (Test-Path $output) -and (Get-Item $output).Length -gt 5000) {
+              Write-Host "Captured live seeded torrent metadata from $source"
+              $success = $true
+              break
+            }
           }
-          "VIDEOSHELF_REAL_LIBRARY=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Render View videos from genuine media
-        shell: cmd
-        run: VideoShelf.exe --screenshot-library-videos "%VIDEOSHELF_REAL_LIBRARY%" "Blender Demos" "%RUNNER_TEMP%\VideoShelf-real-videos.png" 3
+          if (-not $success) { throw 'No public Torznab source returned enough live seeded re:zero results for the screenshot.' }
       - name: Verify screenshots
         shell: powershell
         run: |
           $library = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero.png'
-          $videos = Join-Path $env:RUNNER_TEMP 'VideoShelf-real-videos.png'
+          $online = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           if (!(Test-Path $library)) { throw 'VideoShelf library screenshot was not created.' }
-          if (!(Test-Path $videos)) { throw 'VideoShelf real-media View videos screenshot was not created.' }
+          if (!(Test-Path $online)) { throw 'VideoShelf live online-results screenshot was not created.' }
           if ((Get-Item $library).Length -lt 5000) { throw 'VideoShelf library screenshot is unexpectedly small.' }
-          if ((Get-Item $videos).Length -lt 5000) { throw 'VideoShelf real-media View videos screenshot is unexpectedly small.' }
+          if ((Get-Item $online).Length -lt 5000) { throw 'VideoShelf live online-results screenshot is unexpectedly small.' }
           Copy-Item $library .\VideoShelf-rezero.png
-          Copy-Item $videos .\VideoShelf-real-videos.png
+          Copy-Item $online .\VideoShelf-rezero-online.png
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
@@ -60,8 +60,8 @@ jobs:
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: VideoShelf-real-source-screenshots
+          name: VideoShelf-live-online-screenshots
           path: |
             VideoShelf-rezero.png
-            VideoShelf-real-videos.png
+            VideoShelf-rezero-online.png
           if-no-files-found: error
