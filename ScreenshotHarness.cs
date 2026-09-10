@@ -30,19 +30,20 @@ static class ScreenshotHarness {
   Control title=shelf.Controls.Cast<Control>().FirstOrDefault(c=>c is Panel&&c.Dock==DockStyle.Top&&c.Height>=30&&c.Height<=36);
   Control status=shelf.Controls.Cast<Control>().FirstOrDefault(c=>c is Panel&&c.Dock==DockStyle.Bottom);
   Control view=shelf.ActiveViewForCapture();
-  if(title==null||status==null||view==null)throw new InvalidOperationException("VideoShelf capture surfaces were not available.");
+  Control side=shelf.SidebarForCapture();
+  if(title==null||status==null||view==null||side==null)throw new InvalidOperationException("VideoShelf capture surfaces were not available.");
 
   title.Dock=DockStyle.None;title.SetBounds(0,0,width,titleHeight);title.Anchor=AnchorStyles.Top|AnchorStyles.Left;title.PerformLayout();
   status.Dock=DockStyle.None;status.SetBounds(0,0,width,statusHeight);status.Anchor=AnchorStyles.Top|AnchorStyles.Left;status.PerformLayout();
-  shelf.sidebar.Dock=DockStyle.None;shelf.sidebar.SetBounds(0,0,sidebarWidth,bodyHeight);shelf.sidebar.Anchor=AnchorStyles.Top|AnchorStyles.Left;shelf.sidebar.PerformLayout();
+  side.Dock=DockStyle.None;side.SetBounds(0,0,sidebarWidth,bodyHeight);side.Anchor=AnchorStyles.Top|AnchorStyles.Left;side.PerformLayout();
   view.Dock=DockStyle.None;view.SetBounds(0,0,mainWidth,bodyHeight);view.Anchor=AnchorStyles.Top|AnchorStyles.Left;
-  if(view==shelf.searchView)shelf.LayoutSearchForCapture(mainWidth,bodyHeight);else view.PerformLayout();
+  if(shelf.IsSearchViewForCapture(view))shelf.LayoutSearchForCapture(mainWidth,bodyHeight);else view.PerformLayout();
   Application.DoEvents();
 
   using(var bitmap=new Bitmap(width,height,PixelFormat.Format32bppArgb)){
    using(Graphics g=Graphics.FromImage(bitmap)){g.Clear(XdolfTheme.Background);}
    title.DrawToBitmap(bitmap,new Rectangle(0,0,width,titleHeight));
-   shelf.sidebar.DrawToBitmap(bitmap,new Rectangle(1,titleHeight,sidebarWidth,bodyHeight));
+   side.DrawToBitmap(bitmap,new Rectangle(1,titleHeight,sidebarWidth,bodyHeight));
    view.DrawToBitmap(bitmap,new Rectangle(245,titleHeight,mainWidth,bodyHeight));
    status.DrawToBitmap(bitmap,new Rectangle(0,titleHeight+bodyHeight,width,statusHeight));
    using(Graphics g=Graphics.FromImage(bitmap)){using(var p=new Pen(XdolfTheme.Outline))g.DrawRectangle(p,0,0,width-1,height-1);}
