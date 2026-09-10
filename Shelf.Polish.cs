@@ -35,6 +35,7 @@ sealed partial class Shelf {
   inspectorTitle.AutoEllipsis=false;
   inspectorTitle.TextAlign=ContentAlignment.TopLeft;
 
+  NativeDarkScroll.Apply(onlineCards);
   if(onlineCards.Parent!=null){onlineRail=new SearchScrollRail(onlineCards);onlineCards.Parent.Controls.Add(onlineRail);onlineRail.BringToFront();}
   LayoutFinalPolish();
  }
@@ -55,6 +56,7 @@ sealed partial class Shelf {
    inspectorMetadataVisual.SetBounds(13,356,w,h);
    inspectorMetadataVisual.BringToFront();
   }
+  NativeDarkScroll.Apply(onlineCards);
   if(onlineRail!=null&&onlineCards.Parent==onlineRail.Parent){
    onlineRail.SetBounds(Math.Max(0,onlineCards.Right-18),onlineCards.Top,18,Math.Max(0,onlineCards.Height));
    onlineRail.BringToFront();
