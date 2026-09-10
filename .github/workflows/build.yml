@@ -25,6 +25,8 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           $sources = @(
+            'https://zileanfortheweebs.midnightignite.me/torznab/api',
+            'https://stremthrufortheweebs.midnightignite.me/v0/torznab/api',
             'https://bitmagnetfortheweebs.midnightignite.me/torznab/api',
             'https://www.torlock.com/torznab/api'
           )
