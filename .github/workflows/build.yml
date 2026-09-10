@@ -17,9 +17,25 @@ jobs:
       - name: Test folder creation with re:zero
         shell: cmd
         run: VideoShelf.exe --self-test
+      - name: Render real re:zero GUI screenshot
+        shell: cmd
+        run: VideoShelf.exe --screenshot-rezero "%RUNNER_TEMP%\VideoShelf-rezero.png"
+      - name: Verify screenshot
+        shell: powershell
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero.png'
+          if (!(Test-Path $path)) { throw 'VideoShelf screenshot was not created.' }
+          if ((Get-Item $path).Length -lt 1000) { throw 'VideoShelf screenshot is unexpectedly small.' }
+          Copy-Item $path .\VideoShelf-rezero.png
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: VideoShelf-windows
           path: VideoShelf.exe
+          if-no-files-found: error
+      - name: Upload re:zero screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoShelf-rezero-screenshot
+          path: VideoShelf-rezero.png
           if-no-files-found: error
