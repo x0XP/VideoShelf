@@ -5,5 +5,8 @@ VideoShelf.exe
 .vs/
 bin/
 obj/
+TransferHost/bin/
+TransferHost/obj/
+TransferHostRuntime/
 Thumbs.db
 Desktop.ini
