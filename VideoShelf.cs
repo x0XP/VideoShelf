@@ -3,12 +3,15 @@ using System.IO;
 using System.Linq;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace VideoShelf {
 static class Program {
  [STAThread] static void Main(string[] args) {
-  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{FolderNaming.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
+  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{FolderNaming.SelfTest();BuiltInOnlineSearch.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
+  int builtInArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--test-built-in-online",StringComparison.OrdinalIgnoreCase));
+  if(builtInArg>=0){try{string query=(builtInArg+1<args.Length&&args[builtInArg+1].Length>0)?args[builtInArg+1]:"re zero";using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(18))){var found=BuiltInOnlineSearch.Search(query,timeout.Token).GetAwaiter().GetResult();if(found.Count==0)throw new InvalidOperationException("Built-in online search returned no seeded results for "+query+".");if(found.Any(r=>r.Seeders<=0||string.IsNullOrWhiteSpace(r.Link)))throw new InvalidOperationException("Built-in online search returned an invalid or zero-seeder result.");Console.WriteLine("Built-in online search returned "+found.Count+" seeded result(s). Sources: "+string.Join(", ",found.Select(r=>r.Source).Distinct(StringComparer.OrdinalIgnoreCase).Take(8)));}Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int onlineArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-online",StringComparison.OrdinalIgnoreCase));
   if(onlineArg>=0){try{if(onlineArg+5>=args.Length)throw new ArgumentException("Usage: --screenshot-online <display-name> <query> <source-url> <output.png> <expected-count>");int expected;if(!int.TryParse(args[onlineArg+5],out expected)||expected<1)throw new ArgumentException("Expected result count must be a positive integer.");ScreenshotHarness.CaptureOnlineResults(args[onlineArg+1],args[onlineArg+2],args[onlineArg+3],args[onlineArg+4],expected);Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int mockArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-mockup-search",StringComparison.OrdinalIgnoreCase));
