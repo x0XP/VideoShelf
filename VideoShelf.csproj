@@ -27,6 +27,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AppDataPaths.cs" />
+    <Compile Include="XdolfTheme.cs" />
     <Compile Include="FolderManagement.cs" />
     <Compile Include="VideoShelf.cs" />
     <Compile Include="ScreenshotHarness.cs" />
