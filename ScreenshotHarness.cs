@@ -20,7 +20,10 @@ static class ScreenshotHarness {
  }
  public static void CaptureMockupSearch(string outputPath){Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareMockupSearch();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,12000);}
  static void Init(){Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
- static void PrepareWindow(Shelf shelf){shelf.Size=new Size(1536,1024);shelf.StartPosition=FormStartPosition.Manual;shelf.Location=new Point(20,20);shelf.Show();Application.DoEvents();}
+ static void PrepareWindow(Shelf shelf){
+  shelf.MinimumSize=Size.Empty;shelf.MaximumSize=Size.Empty;shelf.StartPosition=FormStartPosition.Manual;shelf.Location=new Point(0,0);shelf.Show();Application.DoEvents();
+  shelf.SetBounds(0,0,1536,1024,BoundsSpecified.All);shelf.ClientSize=new Size(1536,1024);shelf.PerformLayout();Application.DoEvents();
+ }
  static void Settle(Shelf shelf){shelf.PerformLayout();foreach(Control c in shelf.Controls)c.PerformLayout();shelf.Refresh();Application.DoEvents();Thread.Sleep(350);Application.DoEvents();}
  static void SaveWindow(Shelf shelf,string outputPath){using(var bitmap=new Bitmap(shelf.ClientSize.Width,shelf.ClientSize.Height,PixelFormat.Format32bppArgb)){shelf.DrawToBitmap(bitmap,new Rectangle(Point.Empty,shelf.ClientSize));string directory=Path.GetDirectoryName(outputPath);if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);bitmap.Save(outputPath,ImageFormat.Png);}shelf.Hide();}
  static void Verify(string outputPath,long minBytes){if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<minBytes)throw new Exception("Screenshot was not created correctly.");}
