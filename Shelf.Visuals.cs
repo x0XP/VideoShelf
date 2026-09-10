@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace VideoShelf {
 sealed partial class Shelf {
  bool extendedVisualsApplied;
- Panel queryFrame;
+ Panel queryFrame,fileHeaderFill;
  Label queryGlyph;
 
  void ApplyExtendedVisuals(){
@@ -31,13 +31,31 @@ sealed partial class Shelf {
   LayoutExtendedVisuals();queryFrame.BringToFront();
  }
  void LayoutExtendedVisuals(){
-  if(queryFrame==null)return;queryFrame.SetBounds(17,14,465,38);onlineQuery.SetBounds(12,9,405,22);if(queryGlyph!=null)queryGlyph.SetBounds(425,5,32,28);
+  if(queryFrame!=null){queryFrame.SetBounds(17,14,465,38);onlineQuery.SetBounds(12,9,405,22);if(queryGlyph!=null)queryGlyph.SetBounds(425,5,32,28);}
+  LayoutFileHeaderFill();
  }
  void ConfigureFileList(){
   files.OwnerDraw=true;
   files.DrawColumnHeader+=delegate(object s,DrawListViewColumnHeaderEventArgs e){using(var b=new SolidBrush(Color.FromArgb(12,24,34)))e.Graphics.FillRectangle(b,e.Bounds);using(var p=new Pen(Color.FromArgb(39,58,73)))e.Graphics.DrawLine(p,e.Bounds.Right-1,e.Bounds.Top,e.Bounds.Right-1,e.Bounds.Bottom);TextRenderer.DrawText(e.Graphics,e.Header.Text,new Font("Segoe UI",8.5f,FontStyle.Bold),new Rectangle(e.Bounds.X+9,e.Bounds.Y,e.Bounds.Width-12,e.Bounds.Height),Color.FromArgb(184,202,219),TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding);};
   files.DrawItem+=delegate(object s,DrawListViewItemEventArgs e){};
   files.DrawSubItem+=delegate(object s,DrawListViewSubItemEventArgs e){bool selected=e.Item.Selected;Color bg=selected?Color.FromArgb(24,64,105):Color.FromArgb(8,17,25);using(var b=new SolidBrush(bg))e.Graphics.FillRectangle(b,e.Bounds);TextRenderer.DrawText(e.Graphics,e.SubItem.Text,files.Font,new Rectangle(e.Bounds.X+8,e.Bounds.Y,e.Bounds.Width-10,e.Bounds.Height),selected?Color.White:XdolfTheme.Text,TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding);};
+  NativeDarkScroll.Apply(files);
+  if(files.Parent!=null){
+   fileHeaderFill=new Panel{BackColor=Color.FromArgb(12,24,34),TabStop=false};
+   fileHeaderFill.Paint+=delegate(object s,PaintEventArgs e){using(var p=new Pen(Color.FromArgb(39,58,73)))e.Graphics.DrawLine(p,0,fileHeaderFill.Height-1,fileHeaderFill.Width,fileHeaderFill.Height-1);};
+   files.Parent.Controls.Add(fileHeaderFill);fileHeaderFill.BringToFront();
+   files.Resize+=delegate{LayoutFileHeaderFill();};
+   files.ColumnWidthChanged+=delegate{LayoutFileHeaderFill();};
+   LayoutFileHeaderFill();
+  }
+ }
+ void LayoutFileHeaderFill(){
+  if(fileHeaderFill==null||files.IsDisposed)return;
+  int used=0;foreach(ColumnHeader c in files.Columns)used+=c.Width;
+  int width=Math.Max(0,files.Width-used-2);
+  fileHeaderFill.Visible=width>0;
+  if(width>0){fileHeaderFill.SetBounds(files.Left+used+1,files.Top+1,width,24);fileHeaderFill.BringToFront();}
+  NativeDarkScroll.Apply(files);
  }
 }
 }
