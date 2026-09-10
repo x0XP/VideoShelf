@@ -7,10 +7,20 @@ if not exist "%CSC%" (
  echo Microsoft .NET Framework 4.x is required. Enable it in Windows Features.
  exit /b 1
 )
-"%CSC%" /nologo /target:winexe /optimize+ /out:"VideoShelf.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Xml.Linq.dll /reference:System.Security.dll "AppDataPaths.cs" "XdolfTheme.cs" "FolderManagement.cs" "VideoShelf.cs" "ScreenshotHarness.cs" "Shelf.Core.cs" "Shelf.Library.cs" "Shelf.Online.cs" "PortraitLookup.cs" "OnlineSearch.cs" "OnlineThumbnailLookup.cs"
+"%CSC%" /nologo /target:winexe /optimize+ /out:"VideoShelf.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Xml.Linq.dll /reference:System.Security.dll "AppDataPaths.cs" "XdolfTheme.cs" "FolderManagement.cs" "TransferBridge.cs" "VideoShelf.cs" "ScreenshotHarness.cs" "Shelf.Core.cs" "Shelf.Library.cs" "Shelf.Online.cs" "PortraitLookup.cs" "OnlineSearch.cs" "OnlineThumbnailLookup.cs"
 if errorlevel 1 (
  echo Build failed.
  exit /b 1
 )
 if /I "%~1"=="--build-only" exit /b 0
+if not exist "TransferHostRuntime\VideoShelf.TransferHost.exe" (
+ where dotnet >nul 2>nul
+ if not errorlevel 1 (
+  echo Building VideoShelf torrent transfer runtime...
+  dotnet publish "TransferHost\VideoShelf.TransferHost.csproj" -c Release -r win-x64 --self-contained true -o "TransferHostRuntime"
+  if errorlevel 1 echo Warning: transfer runtime build failed. Library browsing will still work.
+ ) else (
+  echo Note: .NET SDK not found, so the transfer runtime was not built. Use the packaged Windows release for integrated downloads/streaming.
+ )
+)
 start "" "%~dp0VideoShelf.exe"
