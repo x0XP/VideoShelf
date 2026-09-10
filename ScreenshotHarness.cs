@@ -41,7 +41,7 @@ static class ScreenshotHarness {
     shelf.PrepareScreenshotLibrary(root);
     if(!shelf.PrepareOnlineScreenshot(displayName,query,torznabUrl,expectedResults))
      throw new Exception("VideoShelf did not receive enough seeded online results from the Torznab source.");
-    DateTime until=DateTime.UtcNow.AddSeconds(8);
+    DateTime until=DateTime.UtcNow.AddSeconds(6);
     while(DateTime.UtcNow<until&&shelf.ScreenshotThumbnailsLoading){Application.DoEvents();Thread.Sleep(50);}
     Settle(shelf);
     SaveWindow(shelf,outputPath);
@@ -129,7 +129,10 @@ sealed partial class Shelf {
   Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));
   if(person==null)return false;
   var source=new OnlineSettings{Url=torznabUrl,ApiKey="",AutoSearch=false};
-  List<OnlineResult> found=TorznabSearch.Search(query,source,CancellationToken.None).GetAwaiter().GetResult();
+  List<OnlineResult> found;
+  using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10))){
+   found=TorznabSearch.Search(query,source,timeout.Token).GetAwaiter().GetResult();
+  }
   found=found.Where(r=>r.Seeders>0).Take(8).ToList();
   if(found.Count<expectedResults)return false;
 
