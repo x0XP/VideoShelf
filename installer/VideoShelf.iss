@@ -260,11 +260,19 @@ begin
 
   WizardForm.SelectDirLabel.Font.Color := VSText;
   WizardForm.SelectDirBrowseLabel.Font.Color := VSMuted;
+  WizardForm.DiskSpaceLabel.Font.Name := 'Segoe UI';
+  WizardForm.DiskSpaceLabel.Font.Size := 9;
+  WizardForm.DiskSpaceLabel.Font.Color := VSMuted;
   WizardForm.SelectTasksLabel.Font.Color := VSText;
   WizardForm.ReadyLabel.Font.Color := VSText;
   WizardForm.PreparingLabel.Font.Color := VSText;
   WizardForm.FilenameLabel.Font.Color := VSMuted;
   WizardForm.StatusLabel.Font.Color := VSText;
+
+  WizardForm.SelectDirBitmapImage.Bitmap.LoadFromFile(ExpandConstant('{tmp}\VideoShelfInstallerLogo.bmp'));
+  WizardForm.SelectDirBitmapImage.Stretch := True;
+  WizardForm.SelectDirBitmapImage.AutoSize := False;
+  WizardForm.SelectDirBitmapImage.SetBounds(WizardForm.SelectDirBitmapImage.Left, WizardForm.SelectDirBitmapImage.Top, ScaleX(48), ScaleY(48));
 
   ThemeEdit(WizardForm.DirEdit);
   ThemeMemo(WizardForm.ReadyMemo);
@@ -319,6 +327,7 @@ begin
   ThemeButton(WizardForm.BackButton);
   ThemeButton(WizardForm.NextButton);
   ThemeButton(WizardForm.CancelButton);
+  WizardForm.DiskSpaceLabel.Font.Color := VSMuted;
 
   if CurPageID = wpReady then
     WizardForm.ReadyMemo.Color := VSPanel;
