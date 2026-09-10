@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace VideoShelf {
@@ -8,8 +7,6 @@ sealed partial class Shelf {
  bool finalPolishApplied;
  MockupFilter sourceVisual,categoryVisual,resolutionVisual,sortVisual;
  InspectorMetadataView inspectorMetadataVisual;
- const int SB_VERT=1;
- [DllImport("user32.dll")] static extern bool ShowScrollBar(IntPtr hWnd,int wBar,bool bShow);
 
  void ApplyFinalPolish(){
   if(finalPolishApplied)return;
@@ -30,11 +27,6 @@ sealed partial class Shelf {
 
   inspectorTitle.AutoEllipsis=false;
   inspectorTitle.TextAlign=ContentAlignment.TopLeft;
-
-  onlineCards.HandleCreated+=delegate{HideOnlineScrollbar();};
-  onlineCards.Layout+=delegate{HideOnlineScrollbar();};
-  onlineCards.Resize+=delegate{HideOnlineScrollbar();};
-  onlineCards.MouseWheel+=delegate{BeginInvoke((MethodInvoker)delegate{HideOnlineScrollbar();});};
 
   files.Resize+=delegate{FillLastFileColumn();};
   FillLastFileColumn();
@@ -58,11 +50,7 @@ sealed partial class Shelf {
    inspectorMetadataVisual.SetBounds(13,345,w,h);
    inspectorMetadataVisual.BringToFront();
   }
-  HideOnlineScrollbar();
   FillLastFileColumn();
- }
- void HideOnlineScrollbar(){
-  try{if(onlineCards.IsHandleCreated)ShowScrollBar(onlineCards.Handle,SB_VERT,false);}catch{}
  }
  void FillLastFileColumn(){
   try{
