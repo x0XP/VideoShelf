@@ -66,14 +66,16 @@ sealed class AddFolderDialog : Form {
  readonly TextBox nameBox=new TextBox();
  public string FolderName { get { return nameBox.Text.Trim(); } }
  public AddFolderDialog(){
-  Text="Add folder";StartPosition=FormStartPosition.CenterParent;FormBorderStyle=FormBorderStyle.FixedDialog;MaximizeBox=false;MinimizeBox=false;ShowInTaskbar=false;ClientSize=new Size(430,160);BackColor=Color.FromArgb(17,22,32);ForeColor=Color.White;Font=new Font("Segoe UI",10);
-  var label=new Label{Left=22,Top=20,Width=380,Height=24,Text="Folder / collection name"};
-  nameBox.SetBounds(22,49,386,28);nameBox.BackColor=Color.FromArgb(28,34,47);nameBox.ForeColor=Color.White;nameBox.BorderStyle=BorderStyle.FixedSingle;
-  var hint=new Label{Left=22,Top=82,Width=386,Height=23,ForeColor=Color.FromArgb(156,170,193),Text="Names such as re:zero are preserved in VideoShelf."};
-  var add=new Button{Text="Add",Left=232,Top=115,Width=82,Height=31,DialogResult=DialogResult.OK};
-  var cancel=new Button{Text="Cancel",Left=326,Top=115,Width=82,Height=31,DialogResult=DialogResult.Cancel};
-  foreach(var b in new[]{add,cancel}){b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=0;b.BackColor=Color.FromArgb(28,34,47);b.ForeColor=Color.White;}
-  Controls.AddRange(new Control[]{label,nameBox,hint,add,cancel});AcceptButton=add;CancelButton=cancel;
+  Text="Add folder";StartPosition=FormStartPosition.CenterParent;FormBorderStyle=FormBorderStyle.FixedDialog;MaximizeBox=false;MinimizeBox=false;ShowInTaskbar=false;ClientSize=new Size(430,164);BackColor=XdolfTheme.Background;ForeColor=XdolfTheme.Text;Font=new Font("Segoe UI",10);
+  var label=new Label{Left=22,Top=20,Width=380,Height=24,Text="Folder / collection name",ForeColor=XdolfTheme.TextStrong};
+  nameBox.SetBounds(22,49,386,28);XdolfTheme.StyleInput(nameBox);nameBox.BorderStyle=BorderStyle.FixedSingle;
+  var hint=new Label{Left=22,Top=82,Width=386,Height=23,ForeColor=XdolfTheme.Muted,Text="Names such as re:zero are preserved in VideoShelf."};
+  var divider=new Panel{Left=22,Top=108,Width=386,Height=1,BackColor=XdolfTheme.Outline};
+  var accent=new Panel{Left=22,Top=108,Width=70,Height=1,BackColor=XdolfTheme.AccentBlue};
+  var add=new Button{Text="Add",Left=232,Top=120,Width=82,Height=31,DialogResult=DialogResult.OK};
+  var cancel=new Button{Text="Cancel",Left=326,Top=120,Width=82,Height=31,DialogResult=DialogResult.Cancel};
+  XdolfTheme.StyleButton(add);XdolfTheme.StyleButton(cancel);
+  Controls.AddRange(new Control[]{label,nameBox,hint,divider,accent,add,cancel});AcceptButton=add;CancelButton=cancel;
   Shown+=delegate{nameBox.Focus();};
  }
  protected override void OnFormClosing(FormClosingEventArgs e){
