@@ -14,6 +14,14 @@ static class Program {
   if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){
    try{FolderNaming.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
   }
+  int screenshotArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-rezero",StringComparison.OrdinalIgnoreCase));
+  if(screenshotArg>=0){
+   try{
+    string output=(screenshotArg+1<args.Length&&args[screenshotArg+1].Length>0)?args[screenshotArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero.png");
+    ScreenshotHarness.CaptureReZero(output);
+    Environment.Exit(0);
+   }catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
+  }
   Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); Application.Run(new Shelf());
  }
 }
