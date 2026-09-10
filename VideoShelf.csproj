@@ -40,6 +40,7 @@
     <Compile Include="ScreenshotHarness.cs" />
     <Compile Include="Shelf.Core.cs" />
     <Compile Include="Shelf.Branding.cs" />
+    <Compile Include="Shelf.HomeDashboard.cs" />
     <Compile Include="Shelf.Layout.cs" />
     <Compile Include="Shelf.Visuals.cs" />
     <Compile Include="Shelf.Polish.cs" />
@@ -47,6 +48,7 @@
     <Compile Include="Shelf.Online.cs" />
     <Compile Include="PortraitLookup.cs" />
     <Compile Include="OnlineSearch.cs" />
+    <Compile Include="BuiltInOnlineSearch.cs" />
     <Compile Include="OnlineThumbnailLookup.cs" />
   </ItemGroup>
   <ItemGroup>
