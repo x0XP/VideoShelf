@@ -138,6 +138,7 @@ sealed partial class Shelf {
   dashboardAddButton.Enabled=DirectoryExists(root);
   dashboardSearchButton.Enabled=true;
   dashboardHint.Text=root.Length==0?"Choose a library folder, then add or browse collections.":people.Count==0?"Your library is ready. Add your first collection to begin.":people.Count+" collection"+(people.Count==1?" is":"s are")+" available. Use Collections to browse them.";
+  if(section==ShellSection.Home&&people.Count==1&&statusRight.Text=="1 collections")statusRight.Text="1 collection";
  }
 
  bool DirectoryExists(string path){try{return !string.IsNullOrWhiteSpace(path)&&System.IO.Directory.Exists(path);}catch{return false;}}
