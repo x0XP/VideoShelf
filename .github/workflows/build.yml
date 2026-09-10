@@ -14,9 +14,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
       - name: Build VideoShelf
         shell: cmd
         run: Start.cmd --build-only
+
       - name: Verify VideoShelf application icon
         shell: powershell
         run: |
@@ -41,9 +43,28 @@ jobs:
             } finally { $bitmap.Dispose(); $icon.Dispose() }
           }
           Assert-BrandedIcon '.\VideoShelf.exe'
-      - name: Test folder creation with re:zero
+
+      - name: Test folder aliases and built-in metadata parser
         shell: cmd
         run: VideoShelf.exe --self-test
+
+      - name: Attempt live built-in Find online proof
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--test-built-in-online','"re zero"') -PassThru -NoNewWindow
+          if (-not $process.WaitForExit(22000)) {
+            $process.Kill()
+            $process.WaitForExit()
+            Write-Warning 'Built-in online search exceeded 22 seconds.'
+            exit 1
+          }
+          if ($process.ExitCode -ne 0) {
+            Write-Warning "Built-in Find online proof failed with exit code $($process.ExitCode)."
+            exit 1
+          }
+          Write-Host 'Built-in Find online returned at least one valid seeded result.'
+
       - name: Publish bundled download and streaming runtime
         shell: powershell
         run: |
@@ -55,13 +76,17 @@ jobs:
           Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
           Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
           "VIDEOSHELF_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Test MonoTorrent, LibVLC and transfer icon runtime
+
+      - name: Test MonoTorrent, LibVLC, transfer UI and transfer icon runtime
         shell: powershell
         run: |
           $transferExe = Join-Path $env:VIDEOSHELF_PACKAGE 'TransferHost\VideoShelf.TransferHost.exe'
           if (!(Test-Path $transferExe)) { throw 'TransferHost executable was not published.' }
           $process = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "TransferHost self-test failed with exit code $($process.ExitCode)." }
+          foreach ($shot in @('VideoShelf-transfer-download.png','VideoShelf-transfer-player.png','VideoShelf-transfer-files.png')) {
+            if (!(Test-Path $shot) -or (Get-Item $shot).Length -lt 5000) { throw "Transfer UI capture was not created correctly: $shot" }
+          }
           Add-Type -AssemblyName System.Drawing
           $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($transferExe)
           if ($null -eq $icon) { throw 'TransferHost has no embedded Windows icon.' }
@@ -77,6 +102,7 @@ jobs:
             }
             if ($red -lt 5 -or $blue -lt 20) { throw "TransferHost does not contain the VideoShelf branded icon (red=$red blue=$blue)." }
           } finally { $bitmap.Dispose(); $icon.Dispose() }
+
       - name: Build Windows installer
         shell: powershell
         run: |
@@ -117,6 +143,7 @@ jobs:
           } finally { $bitmap.Dispose(); $icon.Dispose() }
           "VIDEOSHELF_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "VIDEOSHELF_INSTALLER_DIR=$installerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Test silent installer and uninstaller
         shell: powershell
         run: |
@@ -142,9 +169,11 @@ jobs:
           Start-Sleep -Seconds 1
           if (Test-Path $mainExe) { throw 'VideoShelf.exe remained after silent uninstall.' }
           if (Test-Path $transferExe) { throw 'TransferHost remained after silent uninstall.' }
+
       - name: Render deterministic Home layout
         shell: cmd
         run: VideoShelf.exe --screenshot-home-layout "%RUNNER_TEMP%\VideoShelf-home-layout.png"
+
       - name: Attempt real re:zero artwork proof
         continue-on-error: true
         shell: powershell
@@ -160,45 +189,15 @@ jobs:
             Write-Warning 'Real artwork source was unavailable or blocked. No fake artwork is substituted.'
             exit 1
           }
+
       - name: Render real re:zero collection screen
         shell: cmd
         run: VideoShelf.exe --screenshot-rezero-detail "%RUNNER_TEMP%\VideoShelf-rezero-detail.png"
+
       - name: Render search-layout visual regression
         shell: cmd
         run: VideoShelf.exe --screenshot-mockup-search "%RUNNER_TEMP%\VideoShelf-search-layout.png"
-      - name: Attempt live re:zero torrent metadata proof without media download
-        continue-on-error: true
-        shell: powershell
-        run: |
-          $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
-          $sources = @(
-            'https://nyaa.media/?page=rss&q={query}&c=1_2&f=0',
-            'https://nyaa.mom/?page=rss&q={query}&c=1_2&f=0',
-            'https://nyaa.si/?page=rss&q={query}&c=1_2&f=0',
-            'https://stremthrufortheweebs.midnightignite.me/v0/torznab/api',
-            'https://www.torlock2.com/torznab/api'
-          )
-          $success = $false
-          foreach ($source in $sources) {
-            if (Test-Path $output) { Remove-Item $output -Force }
-            $argumentList = @('--screenshot-online','"re:zero"','"re zero"',('"' + $source + '"'),('"' + $output + '"'),'1')
-            $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
-            if (-not $process.WaitForExit(12000)) {
-              Write-Host "Metadata source unavailable/timed out: $source"
-              $process.Kill()
-              $process.WaitForExit()
-              continue
-            }
-            if ($process.ExitCode -eq 0 -and (Test-Path $output) -and (Get-Item $output).Length -gt 5000) {
-              Write-Host "Captured live seeded torrent metadata from $source"
-              $success = $true
-              break
-            }
-          }
-          if (-not $success) {
-            Write-Warning 'Public metadata feeds were unreachable from this GitHub runner. No media fallback is used.'
-            exit 1
-          }
+
       - name: Verify required screenshots
         shell: powershell
         run: |
@@ -216,20 +215,21 @@ jobs:
           Copy-Item $searchShot .\VideoShelf-search-layout.png
           $homeLive = Join-Path $env:RUNNER_TEMP 'VideoShelf-home-live.png'
           if ((Test-Path $homeLive) -and (Get-Item $homeLive).Length -gt 5000) { Copy-Item $homeLive .\VideoShelf-home-live.png }
-          $online = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
-          if ((Test-Path $online) -and (Get-Item $online).Length -gt 5000) { Copy-Item $online .\VideoShelf-rezero-online.png }
+
       - name: Upload complete Windows package
         uses: actions/upload-artifact@v4
         with:
           name: VideoShelf-windows
           path: ${{ env.VIDEOSHELF_PACKAGE }}
           if-no-files-found: error
+
       - name: Upload tested Windows installer and icon
         uses: actions/upload-artifact@v4
         with:
           name: VideoShelf-installer
           path: ${{ env.VIDEOSHELF_INSTALLER_DIR }}
           if-no-files-found: error
+
       - name: Upload available screenshots
         uses: actions/upload-artifact@v4
         with:
