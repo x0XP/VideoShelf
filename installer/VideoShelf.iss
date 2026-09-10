@@ -59,6 +59,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 Source: "{#SourceDir}\VideoShelf.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\VideoShelf.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\TransferHost\*"; DestDir: "{app}\TransferHost"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\VideoShelfInstallerLogo.bmp"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\VideoShelf"; Filename: "{app}\VideoShelf.exe"; WorkingDir: "{app}"; IconFilename: "{app}\VideoShelf.ico"
@@ -86,11 +87,11 @@ var
   HeaderRed: TPanel;
   FooterLine: TPanel;
   WelcomeCard: TPanel;
-  WelcomeLogo: TPanel;
+  WelcomeLogo: TBitmapImage;
   WelcomeTitle: TNewStaticText;
   WelcomeVersion: TNewStaticText;
   FinishCard: TPanel;
-  FinishLogo: TPanel;
+  FinishLogo: TBitmapImage;
   FinishTitle: TNewStaticText;
   FinishVersion: TNewStaticText;
 
@@ -132,72 +133,27 @@ begin
   SetWindowTheme(List.Handle, 'DarkMode_Explorer', '');
 end;
 
-procedure CreateLogoMark(Parent: TWinControl; X, Y, Size: Integer; var Holder: TPanel);
-var
-  TopLine: TPanel;
-  LeftLine: TPanel;
-  Bar1: TPanel;
-  Bar2: TPanel;
-  Bar3: TPanel;
-  Bar4: TPanel;
-  UnitW: Integer;
+procedure CreateBrandImage(Parent: TWinControl; X, Y, Size: Integer; var Image: TBitmapImage);
 begin
-  Holder := TPanel.Create(WizardForm);
-  Holder.Parent := Parent;
-  Holder.SetBounds(X, Y, Size, Size);
-  Holder.BevelOuter := bvNone;
-  Holder.Color := VSRaised;
-
-  TopLine := TPanel.Create(WizardForm);
-  TopLine.Parent := Holder;
-  TopLine.SetBounds(3, 0, Size - 3, ScaleY(2));
-  TopLine.BevelOuter := bvNone;
-  TopLine.Color := VSBlue;
-
-  LeftLine := TPanel.Create(WizardForm);
-  LeftLine.Parent := Holder;
-  LeftLine.SetBounds(0, 0, ScaleX(4), Size);
-  LeftLine.BevelOuter := bvNone;
-  LeftLine.Color := VSRed;
-
-  UnitW := (Size - ScaleX(28)) div 4;
-
-  Bar1 := TPanel.Create(WizardForm);
-  Bar1.Parent := Holder;
-  Bar1.SetBounds(ScaleX(12), Size - ScaleY(18), UnitW, ScaleY(9));
-  Bar1.BevelOuter := bvNone;
-  Bar1.Color := $009D7651;
-
-  Bar2 := TPanel.Create(WizardForm);
-  Bar2.Parent := Holder;
-  Bar2.SetBounds(ScaleX(12) + UnitW + ScaleX(3), Size - ScaleY(28), UnitW, ScaleY(19));
-  Bar2.BevelOuter := bvNone;
-  Bar2.Color := $009D7651;
-
-  Bar3 := TPanel.Create(WizardForm);
-  Bar3.Parent := Holder;
-  Bar3.SetBounds(ScaleX(12) + (UnitW + ScaleX(3)) * 2, Size - ScaleY(23), UnitW, ScaleY(14));
-  Bar3.BevelOuter := bvNone;
-  Bar3.Color := $009D7651;
-
-  Bar4 := TPanel.Create(WizardForm);
-  Bar4.Parent := Holder;
-  Bar4.SetBounds(ScaleX(12) + (UnitW + ScaleX(3)) * 3, Size - ScaleY(36), UnitW, ScaleY(27));
-  Bar4.BevelOuter := bvNone;
-  Bar4.Color := VSBlue;
+  Image := TBitmapImage.Create(WizardForm);
+  Image.Parent := Parent;
+  Image.SetBounds(X, Y, Size, Size);
+  Image.Stretch := True;
+  Image.Bitmap.LoadFromFile(ExpandConstant('{tmp}\VideoShelfInstallerLogo.bmp'));
 end;
 
 procedure CreateBrandCard(Page: TWinControl; IsFinish: Boolean);
 var
   Card: TPanel;
-  Logo: TPanel;
+  Logo: TBitmapImage;
   TitleText: TNewStaticText;
   VersionText: TNewStaticText;
   Accent: TPanel;
+  TopAccent: TPanel;
 begin
   Card := TPanel.Create(WizardForm);
   Card.Parent := Page;
-  Card.SetBounds(ScaleX(28), ScaleY(34), ScaleX(130), ScaleY(126));
+  Card.SetBounds(ScaleX(28), ScaleY(30), ScaleX(138), ScaleY(145));
   Card.BevelOuter := bvNone;
   Card.Color := VSRaised;
 
@@ -207,11 +163,17 @@ begin
   Accent.BevelOuter := bvNone;
   Accent.Color := VSRed;
 
-  CreateLogoMark(Card, ScaleX(18), ScaleY(18), ScaleX(58), Logo);
+  TopAccent := TPanel.Create(WizardForm);
+  TopAccent.Parent := Card;
+  TopAccent.SetBounds(ScaleX(4), 0, Card.Width - ScaleX(4), ScaleY(2));
+  TopAccent.BevelOuter := bvNone;
+  TopAccent.Color := VSBlue;
+
+  CreateBrandImage(Card, ScaleX(25), ScaleY(14), ScaleX(88), Logo);
 
   TitleText := TNewStaticText.Create(WizardForm);
   TitleText.Parent := Card;
-  TitleText.SetBounds(ScaleX(18), ScaleY(83), ScaleX(103), ScaleY(22));
+  TitleText.SetBounds(ScaleX(18), ScaleY(105), ScaleX(112), ScaleY(22));
   TitleText.Caption := 'VideoShelf';
   TitleText.Font.Name := 'Segoe UI Semibold';
   TitleText.Font.Size := 12;
@@ -220,7 +182,7 @@ begin
 
   VersionText := TNewStaticText.Create(WizardForm);
   VersionText.Parent := Card;
-  VersionText.SetBounds(ScaleX(18), ScaleY(105), ScaleX(103), ScaleY(18));
+  VersionText.SetBounds(ScaleX(18), ScaleY(126), ScaleX(112), ScaleY(16));
   VersionText.Caption := 'v{#AppVersion}';
   VersionText.Font.Name := 'Segoe UI';
   VersionText.Font.Size := 8;
@@ -269,32 +231,32 @@ begin
   WizardForm.WelcomeLabel1.Font.Name := 'Segoe UI Semibold';
   WizardForm.WelcomeLabel1.Font.Size := 20;
   WizardForm.WelcomeLabel1.Font.Color := VSStrong;
-  WizardForm.WelcomeLabel1.Left := ScaleX(188);
+  WizardForm.WelcomeLabel1.Left := ScaleX(194);
   WizardForm.WelcomeLabel1.Top := ScaleY(50);
-  WizardForm.WelcomeLabel1.Width := WizardForm.WelcomePage.Width - ScaleX(216);
+  WizardForm.WelcomeLabel1.Width := WizardForm.WelcomePage.Width - ScaleX(222);
   WizardForm.WelcomeLabel1.Caption := 'Install VideoShelf';
 
   WizardForm.WelcomeLabel2.Font.Name := 'Segoe UI';
   WizardForm.WelcomeLabel2.Font.Size := 10;
   WizardForm.WelcomeLabel2.Font.Color := VSMuted;
-  WizardForm.WelcomeLabel2.Left := ScaleX(188);
+  WizardForm.WelcomeLabel2.Left := ScaleX(194);
   WizardForm.WelcomeLabel2.Top := ScaleY(104);
-  WizardForm.WelcomeLabel2.Width := WizardForm.WelcomePage.Width - ScaleX(216);
+  WizardForm.WelcomeLabel2.Width := WizardForm.WelcomePage.Width - ScaleX(222);
   WizardForm.WelcomeLabel2.Height := ScaleY(150);
 
   WizardForm.FinishedHeadingLabel.Font.Name := 'Segoe UI Semibold';
   WizardForm.FinishedHeadingLabel.Font.Size := 20;
   WizardForm.FinishedHeadingLabel.Font.Color := VSStrong;
-  WizardForm.FinishedHeadingLabel.Left := ScaleX(188);
+  WizardForm.FinishedHeadingLabel.Left := ScaleX(194);
   WizardForm.FinishedHeadingLabel.Top := ScaleY(50);
-  WizardForm.FinishedHeadingLabel.Width := WizardForm.FinishedPage.Width - ScaleX(216);
+  WizardForm.FinishedHeadingLabel.Width := WizardForm.FinishedPage.Width - ScaleX(222);
 
   WizardForm.FinishedLabel.Font.Name := 'Segoe UI';
   WizardForm.FinishedLabel.Font.Size := 10;
   WizardForm.FinishedLabel.Font.Color := VSMuted;
-  WizardForm.FinishedLabel.Left := ScaleX(188);
+  WizardForm.FinishedLabel.Left := ScaleX(194);
   WizardForm.FinishedLabel.Top := ScaleY(104);
-  WizardForm.FinishedLabel.Width := WizardForm.FinishedPage.Width - ScaleX(216);
+  WizardForm.FinishedLabel.Width := WizardForm.FinishedPage.Width - ScaleX(222);
 
   WizardForm.SelectDirLabel.Font.Color := VSText;
   WizardForm.SelectDirBrowseLabel.Font.Color := VSMuted;
@@ -344,6 +306,7 @@ end;
 
 procedure InitializeWizard();
 begin
+  ExtractTemporaryFile('VideoShelfInstallerLogo.bmp');
   StyleWizardPages();
   AddChrome();
   WizardForm.Caption := 'VideoShelf Setup';
