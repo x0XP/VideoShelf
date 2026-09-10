@@ -29,35 +29,21 @@ static class ScreenshotHarness {
   }
  }
 
- public static void CaptureReZeroVideos(string outputPath){
-  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-videos-screenshot-"+Guid.NewGuid().ToString("N"));
-  try{
-   Directory.CreateDirectory(root);
-   string collection=FolderNaming.CreateCollection(root,"re:zero");
-   string season1=Path.Combine(collection,"Season 1");
-   string season2=Path.Combine(collection,"Season 2");
-   Directory.CreateDirectory(season1);
-   Directory.CreateDirectory(season2);
-   CreateTestVideo(season1,"Re Zero - S01E01 - The End of the Beginning and the Beginning of the End.mkv",1572864);
-   CreateTestVideo(season1,"Re Zero - S01E02 - Reunion with the Witch.mp4",1310720);
-   CreateTestVideo(season1,"Re Zero - S01E03 - Starting Life from Zero in Another World.mkv",1835008);
-   CreateTestVideo(season1,"Re Zero - S01E04 - The Happy Roswaal Mansion Family.mkv",2097152);
-   CreateTestVideo(season2,"Re Zero - S02E01 - Each One's Promise.mkv",1703936);
-   CreateTestVideo(season2,"Re Zero - S02E02 - The Next Location.mkv",1966080);
+ public static void CaptureLibraryVideos(string root,string collectionName,string outputPath,int expectedVideos){
+  if(string.IsNullOrWhiteSpace(root)||!Directory.Exists(root))throw new DirectoryNotFoundException("Screenshot library does not exist: "+root);
+  if(string.IsNullOrWhiteSpace(collectionName))throw new ArgumentException("A collection name is required.");
+  if(expectedVideos<1)throw new ArgumentOutOfRangeException("expectedVideos");
 
-   Application.EnableVisualStyles();
-   Application.SetCompatibleTextRenderingDefault(false);
-   using(var shelf=new Shelf()){
-    PrepareWindow(shelf);
-    shelf.PrepareScreenshotLibrary(root);
-    if(!shelf.OpenScreenshotCollection("re:zero",6))throw new Exception("VideoShelf did not pull the re:zero test videos through its normal local scanner.");
-    Settle(shelf);
-    SaveWindow(shelf,outputPath);
-   }
-   Verify(outputPath,5000);
-  }finally{
-   try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}
+  Application.EnableVisualStyles();
+  Application.SetCompatibleTextRenderingDefault(false);
+  using(var shelf=new Shelf()){
+   PrepareWindow(shelf);
+   shelf.PrepareScreenshotLibrary(root);
+   if(!shelf.OpenScreenshotCollection(collectionName,expectedVideos))throw new Exception("VideoShelf did not discover the expected real video files in \""+collectionName+"\".");
+   Settle(shelf);
+   SaveWindow(shelf,outputPath);
   }
+  Verify(outputPath,5000);
  }
 
  static void PrepareWindow(Shelf shelf){
@@ -86,14 +72,6 @@ static class ScreenshotHarness {
  }
  static void Verify(string outputPath,long minBytes){
   if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<minBytes)throw new Exception("Screenshot was not created correctly.");
- }
- static void CreateTestVideo(string directory,string name,int bytes){
-  string path=Path.Combine(directory,name);
-  using(var stream=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None)){
-   byte[] buffer=new byte[8192];
-   int remaining=bytes;
-   while(remaining>0){int count=Math.Min(buffer.Length,remaining);stream.Write(buffer,0,count);remaining-=count;}
-  }
  }
 }
 
