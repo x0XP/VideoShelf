@@ -68,18 +68,16 @@ Filename: "{app}\VideoShelf.exe"; Description: "Launch VideoShelf"; WorkingDir: 
 [Code]
 const
   DotNet48Release = 528040;
-
-  { VideoShelf / Xdolf palette. TColor uses BGR byte order. }
-  VSBackground = $00140D06;  { #060D14 }
-  VSSidebar    = $00171007;  { #071017 }
-  VSPanel      = $001A1209;  { #09121A }
-  VSRaised     = $0024190D;  { #0D1924 }
-  VSOutline    = $00463623;  { #233646 }
-  VSBlue       = $00FF941F;  { #1F94FF }
-  VSRed        = $00423AFF;  { #FF3A42 }
-  VSText       = $00ECE2D7;  { #D7E2EC }
-  VSStrong     = $00FCF9F6;  { #F6F9FC }
-  VSMuted      = $00BEAB99;  { #99ABBE }
+  VSBackground = $00140D06;
+  VSSidebar    = $00171007;
+  VSPanel      = $001A1209;
+  VSRaised     = $0024190D;
+  VSOutline    = $00463623;
+  VSBlue       = $00FF941F;
+  VSRed        = $00423AFF;
+  VSText       = $00ECE2D7;
+  VSStrong     = $00FCF9F6;
+  VSMuted      = $00BEAB99;
 
 var
   HeaderBlue: TPanel;
@@ -312,9 +310,6 @@ begin
   ThemeButton(WizardForm.BackButton);
   ThemeButton(WizardForm.NextButton);
   ThemeButton(WizardForm.CancelButton);
-
-  WizardForm.ProgressGauge.ForeColor := VSBlue;
-  WizardForm.ProgressGauge.BackColor := VSPanel;
   SetWindowTheme(WizardForm.ProgressGauge.Handle, 'DarkMode_Explorer', '');
 end;
 
@@ -356,15 +351,12 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  { Keep native navigation semantics while reapplying the dark Windows theme. }
   ThemeButton(WizardForm.BackButton);
   ThemeButton(WizardForm.NextButton);
   ThemeButton(WizardForm.CancelButton);
 
   if CurPageID = wpReady then
     WizardForm.ReadyMemo.Color := VSPanel;
-  if CurPageID = wpInstalling then
-    WizardForm.ProgressGauge.ForeColor := VSBlue;
 end;
 
 function HasDotNet48(): Boolean;
