@@ -15,8 +15,8 @@ sealed partial class Shelf {
   try{loaded=await Task.Run(()=>{var list=new List<Person>();foreach(string dir in Directory.GetDirectories(path).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase)){try{if((File.GetAttributes(dir)&FileAttributes.ReparsePoint)!=0)continue;}catch{errors++;continue;}list.Add(new Person{Path=dir,Name=FolderNaming.DisplayName(dir)});}return list;});}
   catch(Exception ex){if(token==generation&&!IsDisposed)SetStatus("Library unavailable",ex.Message);return;}
   if(token!=generation||IsDisposed){foreach(var p in loaded)if(p.Photo!=null)p.Photo.Dispose();return;}
-  foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();people=loaded;skipped=errors;RenderHome();try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllText(settings,root);}catch{}
-  if(section!=ShellSection.Home&&section!=ShellSection.Collections)ShowCollections();FetchPortraits(people.ToArray(),portraitScan.Token);
+  foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();people=loaded;skipped=errors;RenderHome();RefreshDashboardHome();try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllText(settings,root);}catch{}
+  if(section!=ShellSection.Home&&section!=ShellSection.Collections)ShowCollectionsBrowser();FetchPortraits(people.ToArray(),portraitScan.Token);
  }
  async void FetchPortraits(Person[] batch,System.Threading.CancellationToken ct){
   fetchingPortraits=true;RenderHome();try{foreach(var person in batch){ct.ThrowIfCancellationRequested();int revision=person.PhotoVersion;using(var result=await PortraitLookup.Find(person.Name,ct)){if(ct.IsCancellationRequested||IsDisposed)return;if(revision!=person.PhotoVersion)continue;ApplyPortrait(person,result);}}}catch(OperationCanceledException){}finally{if(!ct.IsCancellationRequested&&!IsDisposed){fetchingPortraits=false;RenderHome();}}
@@ -41,7 +41,7 @@ sealed partial class Shelf {
   onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;onlineSearching=false;selectedOnline=null;onlineQuery.Text=p.Name;
   int token=++generation;current=p;collectionTitle.Text=p.Name;collectionPath.Text=p.Path;ShowSection(collectionView,ShellSection.Collections);navCollections.SetActive(true);SetStatus("Scanning collection…","Finding local videos");videos.Clear();files.Items.Clear();
   int errors=0;var found=await Task.Run(()=>{var list=new List<Video>();var pending=new Stack<string>();pending.Push(p.Path);while(pending.Count>0){var dir=pending.Pop();try{foreach(var child in Directory.GetDirectories(dir))try{if((File.GetAttributes(child)&FileAttributes.ReparsePoint)==0)pending.Push(child);}catch{errors++;}foreach(var f in Directory.GetFiles(dir)){if(!new[]{".mp4",".mkv",".avi",".mov",".wmv",".webm",".m4v",".mpg",".mpeg",".ts",".mts",".m2ts",".3gp",".flv",".vob"}.Contains(Path.GetExtension(f).ToLowerInvariant()))continue;try{var info=new FileInfo(f);list.Add(new Video{Path=f,Name=info.Name,Size=info.Length,Modified=info.LastWriteTime,Relative=dir.Length==p.Path.Length?"—":dir.Substring(p.Path.Length).TrimStart(Path.DirectorySeparatorChar)});}catch{errors++;}}}catch{errors++;}}return list;});
-  if(token!=generation||IsDisposed)return;videos=found;skipped=errors;RenderLocal();onlineSettings=OnlineSettings.Load();if(onlineSettings.Configured&&onlineSettings.AutoSearch)SearchOnline(p.Name,false);
+  if(token!=generation||IsDisposed)return;videos=found;skipped=errors;RenderLocal();onlineSettings=OnlineSettings.Load();if(onlineSettings.AutoSearch)SearchOnline(p.Name,false);
  }
  void RenderHome(){
   if(cards.IsDisposed)return;string q=libraryFilter.Text.Trim();IEnumerable<Person> selected=people.Where(p=>p.Name.IndexOf(q,StringComparison.OrdinalIgnoreCase)>=0);selected=homeSort.SelectedIndex==1?selected.OrderByDescending(p=>p.Name,StringComparer.OrdinalIgnoreCase):selected.OrderBy(p=>p.Name,StringComparer.OrdinalIgnoreCase);
@@ -53,6 +53,6 @@ sealed partial class Shelf {
  }
  void ClearCards(){while(cards.Controls.Count>0)cards.Controls[0].Dispose();}
  void Play(){if(files.SelectedItems.Count>0)Launch(((Video)files.SelectedItems[0].Tag).Path);else SetStatus("Select a video","Choose a local video first, then Play selected.");}
- void ShowPeople(){ShowCollections();}
+ void ShowPeople(){ShowCollectionsBrowser();}
 }
 }
