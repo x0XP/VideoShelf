@@ -48,22 +48,24 @@ jobs:
         shell: cmd
         run: VideoShelf.exe --self-test
 
-      - name: Attempt live built-in Find online proof
+      - name: Attempt real built-in Find online screenshot
         continue-on-error: true
         shell: powershell
         run: |
-          $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--test-built-in-online','"re zero"') -PassThru -NoNewWindow
-          if (-not $process.WaitForExit(22000)) {
+          $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-built-in.png'
+          $argumentList = @('--screenshot-built-in-online','"re:zero"','"re zero"',('"' + $output + '"'),'1')
+          $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
+          if (-not $process.WaitForExit(25000)) {
             $process.Kill()
             $process.WaitForExit()
-            Write-Warning 'Built-in online search exceeded 22 seconds.'
+            Write-Warning 'Built-in Find online screenshot exceeded 25 seconds.'
             exit 1
           }
-          if ($process.ExitCode -ne 0) {
-            Write-Warning "Built-in Find online proof failed with exit code $($process.ExitCode)."
+          if ($process.ExitCode -ne 0 -or !(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
+            Write-Warning "Built-in Find online screenshot failed with exit code $($process.ExitCode)."
             exit 1
           }
-          Write-Host 'Built-in Find online returned at least one valid seeded result.'
+          Write-Host 'Built-in Find online returned and rendered at least one valid seeded result.'
 
       - name: Publish bundled download and streaming runtime
         shell: powershell
@@ -215,6 +217,8 @@ jobs:
           Copy-Item $searchShot .\VideoShelf-search-layout.png
           $homeLive = Join-Path $env:RUNNER_TEMP 'VideoShelf-home-live.png'
           if ((Test-Path $homeLive) -and (Get-Item $homeLive).Length -gt 5000) { Copy-Item $homeLive .\VideoShelf-home-live.png }
+          $builtIn = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-built-in.png'
+          if ((Test-Path $builtIn) -and (Get-Item $builtIn).Length -gt 5000) { Copy-Item $builtIn .\VideoShelf-rezero-built-in.png }
 
       - name: Upload complete Windows package
         uses: actions/upload-artifact@v4
