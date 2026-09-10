@@ -4,6 +4,23 @@ VideoShelf repository baseline — 10 September 2026
 - Added automatic migration of existing PeopleShelf local settings and image caches.
 - Added an MSBuild project and Windows GitHub Actions build validation.
 
+VideoShelf 1.6 — 10 September 2026
+--------------------------------------
+- Added a distinct **Download locally** action to seeded online results.
+- Download locally asks for a destination before any media transfer starts, then uses VideoShelf's bundled MonoTorrent runtime for a persistent torrent download.
+- Added a dedicated download window with progress, torrent state, transfer rate, received-data figures, cancellation and Open folder.
+- Replaced the external-handler streaming handoff with VideoShelf's own torrent streaming runtime.
+- Added an embedded LibVLCSharp WinForms player for **Stream locally**.
+- Streaming uses MonoTorrent's streaming provider and a localhost HTTP stream consumed by the embedded player.
+- Multi-file torrents expose supported video files in the player and prioritise the selected file while marking unrelated files DoNotDownload.
+- Added Play/Pause, Stop and seek controls to the streaming window.
+- Streaming data is stored in a temporary `%LOCALAPPDATA%\VideoShelf\StreamingCache` directory and removed on player close on a best-effort basis.
+- Online browsing/searching remains metadata-only; neither Download nor Stream begins until the user explicitly selects that action.
+- The zero-seeder rule remains enforced in both parsing and rendering.
+- Added `TransferBridge.cs` to keep the lightweight .NET Framework shell separate from the transfer engine.
+- Added a self-contained .NET 8 `TransferHost` using MonoTorrent 3.0.2, LibVLCSharp.WinForms 3.10.1 and the bundled Windows LibVLC runtime.
+- GitHub Actions now publishes the complete Windows package and runs an offline dependency test that loads MonoTorrent and LibVLC before the package is uploaded.
+
 VideoShelf 1.5 — 10 September 2026
 --------------------------------------
 - Reworked the VideoShelf visual language to match the rebuilt Xdolf click-GUI.
