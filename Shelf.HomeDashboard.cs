@@ -33,6 +33,7 @@ sealed partial class Shelf {
   navSettings.Click+=delegate{RefreshSettingsSearchHint();};
   back.Click+=delegate{ShowCollectionsBrowser();};
   homeView.VisibleChanged+=delegate{if(homeView.Visible&&section==ShellSection.Collections)BeginInvoke((MethodInvoker)ShowCollectionsBrowser);};
+  homeView.Resize+=delegate{if(homeDashboardReady)LayoutDashboardHome();};
   statusRight.TextChanged+=delegate{if(section==ShellSection.Home)RefreshDashboardHome();};
   statusLeft.TextChanged+=delegate{if(section==ShellSection.Home)RefreshDashboardHome();};
 
