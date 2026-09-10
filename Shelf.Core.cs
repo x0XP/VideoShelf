@@ -13,7 +13,7 @@ sealed partial class Shelf : Form {
  readonly Color bg=Color.FromArgb(17,22,32), surface=Color.FromArgb(28,34,47), muted=Color.FromArgb(156,170,193);
  readonly FlowLayoutPanel cards=new FlowLayoutPanel(); readonly Panel content=new Panel(), detail=new Panel(), localDetail=new Panel(), onlineDetail=new Panel();
  readonly Label title=new Label(), subtitle=new Label(), status=new Label(); readonly TextBox search=new TextBox(), onlineQuery=new TextBox(); readonly ComboBox sort=new ComboBox(), resolution=new ComboBox();
- readonly ListView files=new ListView(), onlineFiles=new ListView(); readonly Button back=new Button(), choose=new Button(), refresh=new Button();
+ readonly ListView files=new ListView(), onlineFiles=new ListView(); readonly Button back=new Button(), choose=new Button(), addFolder=new Button(), refresh=new Button();
  readonly ImageList onlineThumbs=new ImageList(); readonly Timer animation=new Timer(); readonly ToolTip tips=new ToolTip();
  System.Threading.CancellationTokenSource portraitScan=new System.Threading.CancellationTokenSource(), onlineScan=new System.Threading.CancellationTokenSource(), thumbnailScan=new System.Threading.CancellationTokenSource();
  bool fetchingPortraits=false, onlineMode=false, onlineSearching=false, thumbnailsLoading=false, thumbnailsPaused=false;
@@ -27,10 +27,11 @@ sealed partial class Shelf : Form {
   var header=new Panel { Dock=DockStyle.Top,Height=156,Padding=new Padding(28) };
   title.SetBounds(28,22,650,39); title.Font=new Font("Segoe UI",24,FontStyle.Bold); title.Text="";
   subtitle.SetBounds(30,69,1000,24); subtitle.ForeColor=muted; subtitle.Text="Choose a folder to get started"; subtitle.AutoEllipsis=true; subtitle.Anchor=AnchorStyles.Top|AnchorStyles.Left|AnchorStyles.Right;
-  Style(choose,"Choose folder",28,111,135); Style(refresh,"Refresh",173,111,90); Style(back,"← People",273,111,105); back.Visible=false;
-  search.SetBounds(394,113,260,29); search.BackColor=surface; search.ForeColor=Color.White; search.BorderStyle=BorderStyle.FixedSingle; tips.SetToolTip(search,"Filter the current people, local-video or online-result view (Ctrl+F)"); search.AccessibleName="Filter current view";
-  sort.SetBounds(674,111,180,30); sort.DropDownStyle=ComboBoxStyle.DropDownList; SetSort(false);
-  header.Controls.AddRange(new Control[]{title,subtitle,choose,refresh,back,search,sort}); SetHeader(false);
+  Style(choose,"Choose folder",28,111,135); Style(addFolder,"+ Add folder",173,111,105); Style(refresh,"Refresh",288,111,90); Style(back,"← People",388,111,105); back.Visible=false;
+  search.SetBounds(503,113,230,29); search.BackColor=surface; search.ForeColor=Color.White; search.BorderStyle=BorderStyle.FixedSingle; tips.SetToolTip(search,"Filter the current people, local-video or online-result view (Ctrl+F)"); search.AccessibleName="Filter current view";
+  sort.SetBounds(748,111,160,30); sort.DropDownStyle=ComboBoxStyle.DropDownList; SetSort(false);
+  addFolder.Enabled=false;tips.SetToolTip(addFolder,"Create a new folder/collection inside the selected library");
+  header.Controls.AddRange(new Control[]{title,subtitle,choose,addFolder,refresh,back,search,sort}); SetHeader(false);
   status.Dock=DockStyle.Bottom; status.Height=38; status.Padding=new Padding(28,8,0,0); status.ForeColor=muted;
   content.Dock=DockStyle.Fill; content.Padding=new Padding(28,10,8,0); cards.Dock=DockStyle.Fill; cards.AutoScroll=true; content.Controls.Add(cards);
   detail.Dock=DockStyle.Fill; detail.Visible=false; content.Controls.Add(detail);
@@ -58,13 +59,14 @@ sealed partial class Shelf : Form {
 
   Controls.Add(content); Controls.Add(status); Controls.Add(header);
   choose.Click+=delegate { using(var d=new FolderBrowserDialog {Description="Choose the parent folder containing one folder per person",SelectedPath=root,ShowNewFolderButton=false}) if(d.ShowDialog(this)==DialogResult.OK) LoadRoot(d.SelectedPath); };
+  addFolder.Click+=delegate {AddLibraryFolder();};
   refresh.Click+=delegate {if(root.Length>0) {if(onlineMode&&current!=null)SearchOnline(onlineQuery.Text,true);else if(current!=null)OpenPerson(current);else LoadRoot(root);} };
   back.Click+=delegate {ShowPeople();}; search.TextChanged+=delegate {if(!suppress) Render();}; sort.SelectedIndexChanged+=delegate {if(!suppress)Render();};
   play.Click+=delegate {Play();}; files.DoubleClick+=delegate {Play();}; files.KeyDown+=delegate(object s,KeyEventArgs e){if(e.KeyCode==Keys.Enter){Play();e.Handled=true;}};
   folder.Click+=delegate {if(current!=null) Launch(current.Path);};findOnline.Click+=delegate{ShowOnline();};local.Click+=delegate{ShowLocal();};
   searchOnline.Click+=delegate{SearchOnline(onlineQuery.Text,true);};onlineQuery.KeyDown+=delegate(object s,KeyEventArgs e){if(e.KeyCode==Keys.Enter){SearchOnline(onlineQuery.Text,true);e.SuppressKeyPress=true;}};
   configure.Click+=delegate{ConfigureOnline();};resolution.SelectedIndexChanged+=delegate{if(onlineMode)RenderOnline();};openOnline.Click+=delegate{OpenOnline();};copyLink.Click+=delegate{CopyOnline();};onlineFiles.DoubleClick+=delegate{OpenOnline();};onlineFiles.KeyDown+=delegate(object s,KeyEventArgs e){if(e.KeyCode==Keys.Enter){OpenOnline();e.Handled=true;}};
-  KeyDown+=delegate(object s,KeyEventArgs e){if(e.Control&&e.KeyCode==Keys.F){search.Focus();e.SuppressKeyPress=true;} if(e.KeyCode==Keys.Escape&&current!=null){if(onlineMode)ShowLocal();else ShowPeople();} if(e.KeyCode==Keys.F5) refresh.PerformClick();};
+  KeyDown+=delegate(object s,KeyEventArgs e){if(e.Control&&e.KeyCode==Keys.F){search.Focus();e.SuppressKeyPress=true;} if(e.Control&&e.KeyCode==Keys.N&&current==null){AddLibraryFolder();e.SuppressKeyPress=true;} if(e.KeyCode==Keys.Escape&&current!=null){if(onlineMode)ShowLocal();else ShowPeople();} if(e.KeyCode==Keys.F5) refresh.PerformClick();};
   animation.Interval=15; animation.Tick+=delegate { files.Top=Math.Max(49,files.Top-12); if(files.Top<=49){animation.Stop();files.Dock=DockStyle.Fill;} };
   Shown+=delegate {try {if(File.Exists(settings)&&Directory.Exists(File.ReadAllText(settings))) LoadRoot(File.ReadAllText(settings));else status.Text="Choose a folder • portraits found by folder name • videos open in your default player";}catch{status.Text="Choose a folder to begin.";} };
   FormClosed+=delegate {generation++;portraitScan.Cancel();onlineScan.Cancel();thumbnailScan.Cancel();portraitScan.Dispose();onlineScan.Dispose();thumbnailScan.Dispose();onlineThumbs.Dispose();animation.Dispose();tips.Dispose();foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();};
@@ -72,7 +74,7 @@ sealed partial class Shelf : Form {
  void SetHeader(bool showName){
   Control header=title.Parent; int height=showName?156:104; int shift=height-header.Height;
   foreach(Control control in header.Controls)if(control!=title)control.Top+=shift;
-  header.Height=height;title.Visible=showName;
+  header.Height=height;title.Visible=showName;addFolder.Visible=!showName;addFolder.Enabled=!showName&&root.Length>0&&Directory.Exists(root);
  }
  void SetSort(bool online){
   suppress=true;sort.Items.Clear();if(online)sort.Items.AddRange(new object[]{"Seeders high–low","Name A–Z","Size high–low"});else sort.Items.AddRange(new object[]{"Name A–Z","Name Z–A","Newest first"});sort.SelectedIndex=0;suppress=false;
