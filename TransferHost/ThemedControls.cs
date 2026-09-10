@@ -140,6 +140,8 @@ internal sealed class SeekBar : Control
 
 internal sealed class DarkComboBox : ComboBox
 {
+    public string EmptyText { get; set; } = "Resolving torrent videos…";
+
     public DarkComboBox()
     {
         DropDownStyle = ComboBoxStyle.DropDownList;
@@ -154,12 +156,12 @@ internal sealed class DarkComboBox : ComboBox
 
     protected override void OnDrawItem(DrawItemEventArgs e)
     {
-        if (e.Index < 0) return;
         bool selected = (e.State & DrawItemState.Selected) != 0;
         using (var b = new SolidBrush(selected ? Color.FromArgb(24, 64, 105) : Theme.Panel)) e.Graphics.FillRectangle(b, e.Bounds);
-        TextRenderer.DrawText(e.Graphics, GetItemText(Items[e.Index]), Font,
+        string text = e.Index >= 0 && e.Index < Items.Count ? GetItemText(Items[e.Index]) : EmptyText;
+        TextRenderer.DrawText(e.Graphics, text, Font,
             new Rectangle(e.Bounds.X + 9, e.Bounds.Y, Math.Max(1, e.Bounds.Width - 18), e.Bounds.Height),
-            selected ? Color.White : Theme.Text,
+            Enabled ? (selected ? Color.White : Theme.Text) : Theme.Muted,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         if ((e.State & DrawItemState.Focus) != 0) e.DrawFocusRectangle();
     }
