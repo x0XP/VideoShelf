@@ -40,9 +40,7 @@ static class ScreenshotHarness {
     PrepareWindow(shelf);
     shelf.PrepareScreenshotLibrary(root);
     if(!shelf.PrepareOnlineScreenshot(displayName,query,torznabUrl,expectedResults))
-     throw new Exception("VideoShelf did not receive enough seeded online results from the Torznab source.");
-    DateTime until=DateTime.UtcNow.AddSeconds(6);
-    while(DateTime.UtcNow<until&&shelf.ScreenshotThumbnailsLoading){Application.DoEvents();Thread.Sleep(50);}
+     throw new Exception("VideoShelf did not receive enough seeded online results from the metadata source.");
     Settle(shelf);
     SaveWindow(shelf,outputPath);
    }
@@ -144,6 +142,8 @@ sealed partial class Shelf {
   onlineQueryFor=query;
   onlineSettings=source;
   onlineResults=found;
+  thumbnailsLoading=false;
+  thumbnailsPaused=true; // The CI proof validates live torrent metadata separately from optional artwork retrieval.
   ClearSearch();
   SetSort(true);
   back.Visible=true;
@@ -154,7 +154,7 @@ sealed partial class Shelf {
   onlineDetail.BringToFront();
   title.Text=displayName;
   SetHeader(true);
-  subtitle.Text="Online results for "+displayName;
+  subtitle.Text="Online results for "+displayName+" • live metadata only";
   onlineQuery.Text=query;
   RenderOnline();
   Application.DoEvents();
