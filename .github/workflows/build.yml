@@ -24,18 +24,18 @@ jobs:
         shell: powershell
         run: |
           $package = Join-Path $env:RUNNER_TEMP 'VideoShelf-package'
-          $host = Join-Path $package 'TransferHost'
-          New-Item -ItemType Directory -Force -Path $host | Out-Null
-          dotnet publish '.\TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $host
+          $transferDir = Join-Path $package 'TransferHost'
+          New-Item -ItemType Directory -Force -Path $transferDir | Out-Null
+          dotnet publish '.\TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
           if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
           Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
           "VIDEOSHELF_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Test MonoTorrent and embedded LibVLC runtime
         shell: powershell
         run: |
-          $host = Join-Path $env:VIDEOSHELF_PACKAGE 'TransferHost\VideoShelf.TransferHost.exe'
-          if (!(Test-Path $host)) { throw 'TransferHost executable was not published.' }
-          $process = Start-Process -FilePath $host -ArgumentList '--self-test' -Wait -PassThru
+          $transferExe = Join-Path $env:VIDEOSHELF_PACKAGE 'TransferHost\VideoShelf.TransferHost.exe'
+          if (!(Test-Path $transferExe)) { throw 'TransferHost executable was not published.' }
+          $process = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "TransferHost self-test failed with exit code $($process.ExitCode)." }
       - name: Render real re:zero GUI screenshot
         shell: cmd
