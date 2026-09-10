@@ -37,9 +37,12 @@ jobs:
           if (!(Test-Path $transferExe)) { throw 'TransferHost executable was not published.' }
           $process = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "TransferHost self-test failed with exit code $($process.ExitCode)." }
-      - name: Render real re:zero GUI screenshot
+      - name: Render real Home screen
         shell: cmd
-        run: VideoShelf.exe --screenshot-rezero "%RUNNER_TEMP%\VideoShelf-rezero.png"
+        run: VideoShelf.exe --screenshot-rezero "%RUNNER_TEMP%\VideoShelf-home.png"
+      - name: Render real re:zero collection screen
+        shell: cmd
+        run: VideoShelf.exe --screenshot-rezero-detail "%RUNNER_TEMP%\VideoShelf-rezero-detail.png"
       - name: Attempt live re:zero torrent metadata proof without media download
         continue-on-error: true
         shell: powershell
@@ -73,13 +76,17 @@ jobs:
             Write-Warning 'Public metadata feeds were unreachable from this GitHub runner. No media fallback is used.'
             exit 1
           }
-      - name: Verify required screenshot
+      - name: Verify required screenshots
         shell: powershell
         run: |
-          $library = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero.png'
-          if (!(Test-Path $library)) { throw 'VideoShelf library screenshot was not created.' }
-          if ((Get-Item $library).Length -lt 5000) { throw 'VideoShelf library screenshot is unexpectedly small.' }
-          Copy-Item $library .\VideoShelf-rezero.png
+          $home = Join-Path $env:RUNNER_TEMP 'VideoShelf-home.png'
+          $detail = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-detail.png'
+          if (!(Test-Path $home)) { throw 'VideoShelf Home screenshot was not created.' }
+          if (!(Test-Path $detail)) { throw 'VideoShelf re:zero detail screenshot was not created.' }
+          if ((Get-Item $home).Length -lt 5000) { throw 'VideoShelf Home screenshot is unexpectedly small.' }
+          if ((Get-Item $detail).Length -lt 5000) { throw 'VideoShelf re:zero detail screenshot is unexpectedly small.' }
+          Copy-Item $home .\VideoShelf-home.png
+          Copy-Item $detail .\VideoShelf-rezero-detail.png
           $online = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           if ((Test-Path $online) -and (Get-Item $online).Length -gt 5000) { Copy-Item $online .\VideoShelf-rezero-online.png }
       - name: Upload complete Windows package
