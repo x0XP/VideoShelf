@@ -9,6 +9,7 @@ sealed partial class Shelf {
 
  protected override void OnShown(EventArgs e){
   base.OnShown(e);
+  ApplyExtendedVisuals();
   EnsureMockupActions();
   LayoutMockupShell();
  }
@@ -33,7 +34,7 @@ sealed partial class Shelf {
  }
  void LayoutMockupShell(){
   if(IsDisposed||ClientSize.Width<=0||ClientSize.Height<=0)return;
-  EnsureMockupActions();
+  ApplyExtendedVisuals();EnsureMockupActions();
 
   body.Dock=DockStyle.None;
   body.SetBounds(1,34,Math.Max(0,ClientSize.Width-2),Math.Max(0,ClientSize.Height-63));
@@ -45,9 +46,9 @@ sealed partial class Shelf {
   body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
  }
  void LayoutSearchSurface(){
-  EnsureMockupActions();
+  ApplyExtendedVisuals();EnsureMockupActions();
   Control results=searchView.Controls.Cast<Control>().FirstOrDefault(c=>c!=inspector&&c is Panel&&c.Controls.OfType<FlowLayoutPanel>().Any(f=>f==onlineCards));
-  Control filters=searchView.Controls.Cast<Control>().FirstOrDefault(c=>c!=inspector&&c is Panel&&c.Controls.Contains(onlineQuery));
+  Control filters=searchView.Controls.Cast<Control>().FirstOrDefault(c=>c!=inspector&&c is Panel&&c.Contains(onlineQuery));
   int w=Math.Max(0,searchView.ClientSize.Width),h=Math.Max(0,searchView.ClientSize.Height),filterHeight=68,rightWidth=Math.Min(332,Math.Max(280,w/3)),rightMargin=12,gap=12;
   int inspectorX=Math.Max(0,w-rightMargin-rightWidth),contentWidth=Math.Max(0,inspectorX-gap),contentHeight=Math.Max(0,h-filterHeight-12);
 
@@ -59,9 +60,8 @@ sealed partial class Shelf {
   inspector.BringToFront();
   if(results!=null){results.Dock=DockStyle.None;results.SetBounds(0,filterHeight,contentWidth,contentHeight);results.Anchor=AnchorStyles.Top|AnchorStyles.Bottom|AnchorStyles.Left;results.SendToBack();}
 
-  onlineCards.Padding=new Padding(22,0,10,16);
-  LayoutInspector();
-  searchView.PerformLayout();ResizeOnlineCards();
+  onlineCards.Padding=new Padding(22,0,10,16);LayoutExtendedVisuals();
+  LayoutInspector();searchView.PerformLayout();ResizeOnlineCards();
  }
  internal void LayoutSearchForCapture(int width,int height){
   searchView.Dock=DockStyle.None;searchView.SetBounds(0,0,width,height);searchView.Anchor=AnchorStyles.Top|AnchorStyles.Left;LayoutSearchSurface();searchView.PerformLayout();
