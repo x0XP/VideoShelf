@@ -14,12 +14,12 @@ static class Program {
   if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){
    try{FolderNaming.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
   }
-  int libraryVideosArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-library-videos",StringComparison.OrdinalIgnoreCase));
-  if(libraryVideosArg>=0){
+  int onlineArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-online",StringComparison.OrdinalIgnoreCase));
+  if(onlineArg>=0){
    try{
-    if(libraryVideosArg+4>=args.Length)throw new ArgumentException("Usage: --screenshot-library-videos <root> <collection> <output.png> <expected-count>");
-    int expected;if(!int.TryParse(args[libraryVideosArg+4],out expected)||expected<1)throw new ArgumentException("Expected video count must be a positive integer.");
-    ScreenshotHarness.CaptureLibraryVideos(args[libraryVideosArg+1],args[libraryVideosArg+2],args[libraryVideosArg+3],expected);
+    if(onlineArg+5>=args.Length)throw new ArgumentException("Usage: --screenshot-online <display-name> <query> <torznab-url> <output.png> <expected-count>");
+    int expected;if(!int.TryParse(args[onlineArg+5],out expected)||expected<1)throw new ArgumentException("Expected result count must be a positive integer.");
+    ScreenshotHarness.CaptureOnlineResults(args[onlineArg+1],args[onlineArg+2],args[onlineArg+3],args[onlineArg+4],expected);
     Environment.Exit(0);
    }catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
   }
