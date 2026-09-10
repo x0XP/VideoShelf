@@ -1,0 +1,22 @@
+name: Windows build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build VideoShelf
+        shell: cmd
+        run: Start.cmd --build-only
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoShelf-windows
+          path: VideoShelf.exe
+          if-no-files-found: error
