@@ -34,7 +34,13 @@ jobs:
           foreach ($source in $sources) {
             if (Test-Path $output) { Remove-Item $output -Force }
             $argumentList = @('--screenshot-online','"re:zero"','"re zero"',$source,$output,'3')
-            $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -Wait -PassThru -NoNewWindow
+            $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
+            if (-not $process.WaitForExit(20000)) {
+              Write-Host "Metadata source timed out: $source"
+              $process.Kill()
+              $process.WaitForExit()
+              continue
+            }
             if ($process.ExitCode -eq 0 -and (Test-Path $output) -and (Get-Item $output).Length -gt 5000) {
               Write-Host "Captured live seeded torrent metadata from $source"
               $success = $true
