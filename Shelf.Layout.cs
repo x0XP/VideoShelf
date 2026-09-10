@@ -12,8 +12,6 @@ sealed partial class Shelf {
   ApplyExtendedVisuals();
   EnsureMockupActions();
   LayoutMockupShell();
-  ApplyFinalPolish();
-  LayoutFinalPolish();
  }
  protected override void OnResize(EventArgs e){
   base.OnResize(e);
