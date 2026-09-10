@@ -33,7 +33,10 @@ Portraits and online-result thumbnails use DuckDuckGo Images only. This is a pub
 
 ## Source layout
 
-- `VideoShelf.cs` — main WinForms UI and local media browser
+- `VideoShelf.cs` — entry point, shared models, and portrait card control
+- `Shelf.Core.cs` — main window construction and shared UI helpers
+- `Shelf.Library.cs` — local library scanning, portraits, and navigation
+- `Shelf.Online.cs` — online result/search/thumbnails UI
 - `PortraitLookup.cs` — portrait search/cache
 - `OnlineSearch.cs` — Torznab search/settings
 - `OnlineThumbnailLookup.cs` — search-engine result thumbnails
