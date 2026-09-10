@@ -113,6 +113,7 @@ internal sealed class SeekBar : Control
         base.OnMouseUp(e);
         if (!dragging) return;
         dragging = false; Capture = false; SetFromX(e.X); ValueCommitted?.Invoke(this, EventArgs.Empty);
+        if (FindForm() is Form form && form.ActiveControl == this) form.ActiveControl = null;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
