@@ -20,20 +20,19 @@ jobs:
       - name: Render real re:zero GUI screenshot
         shell: cmd
         run: VideoShelf.exe --screenshot-rezero "%RUNNER_TEMP%\VideoShelf-rezero.png"
-      - name: Render live re:zero torrent results without media download
+      - name: Render live re:zero torrent metadata without media download
         shell: powershell
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           $sources = @(
-            'https://zileanfortheweebs.midnightignite.me/torznab/api',
+            'https://nyaa.si/?page=rss&q={query}&c=1_2&f=0',
             'https://stremthrufortheweebs.midnightignite.me/v0/torznab/api',
-            'https://bitmagnetfortheweebs.midnightignite.me/torznab/api',
             'https://www.torlock.com/torznab/api'
           )
           $success = $false
           foreach ($source in $sources) {
             if (Test-Path $output) { Remove-Item $output -Force }
-            $argumentList = @('--screenshot-online','"re:zero"','"re zero"',$source,$output,'1')
+            $argumentList = @('--screenshot-online','"re:zero"','"re zero"',('"' + $source + '"'),('"' + $output + '"'),'1')
             $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
             if (-not $process.WaitForExit(20000)) {
               Write-Host "Metadata source timed out: $source"
@@ -47,7 +46,7 @@ jobs:
               break
             }
           }
-          if (-not $success) { throw 'No public Torznab source returned a live seeded re:zero result for the screenshot.' }
+          if (-not $success) { throw 'No metadata source returned a live seeded re:zero result for the screenshot.' }
       - name: Verify screenshots
         shell: powershell
         run: |
