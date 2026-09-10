@@ -28,8 +28,6 @@ sealed partial class Shelf {
   inspectorTitle.AutoEllipsis=false;
   inspectorTitle.TextAlign=ContentAlignment.TopLeft;
 
-  files.Resize+=delegate{FillLastFileColumn();};
-  FillLastFileColumn();
   LayoutFinalPolish();
  }
  MockupFilter CreateFilter(ComboBox combo){
@@ -50,14 +48,6 @@ sealed partial class Shelf {
    inspectorMetadataVisual.SetBounds(13,345,w,h);
    inspectorMetadataVisual.BringToFront();
   }
-  FillLastFileColumn();
- }
- void FillLastFileColumn(){
-  try{
-   if(files.Columns.Count<5||files.ClientSize.Width<=0)return;
-   int used=0;for(int i=0;i<files.Columns.Count-1;i++)used+=files.Columns[i].Width;
-   files.Columns[files.Columns.Count-1].Width=Math.Max(160,files.ClientSize.Width-used-4);
-  }catch{}
  }
 }
 }
