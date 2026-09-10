@@ -10,188 +10,38 @@ using System.Threading;
 namespace VideoShelf {
 static class ScreenshotHarness {
  public static void CaptureReZero(string outputPath){
-  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-screenshot-"+Guid.NewGuid().ToString("N"));
-  try{
-   Directory.CreateDirectory(root);
-   FolderNaming.CreateCollection(root,"re:zero");
-   Application.EnableVisualStyles();
-   Application.SetCompatibleTextRenderingDefault(false);
-   using(var shelf=new Shelf()){
-    PrepareWindow(shelf);
-    shelf.PrepareScreenshotLibrary(root);
-    if(!shelf.PullScreenshotPortrait("re:zero"))throw new Exception("A real thumbnail could not be pulled for re:zero; refusing to capture a placeholder screenshot.");
-    Settle(shelf);
-    SaveWindow(shelf,outputPath);
-   }
-   Verify(outputPath,5000);
-  }finally{
-   try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}
-  }
+  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,"re:zero");Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.PullScreenshotPortrait("re:zero"))throw new Exception("A real thumbnail could not be pulled for re:zero; refusing to capture a placeholder Home screenshot.");shelf.ShowHome();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
-
  public static void CaptureReZeroDetail(string outputPath){
-  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-detail-screenshot-"+Guid.NewGuid().ToString("N"));
-  try{
-   Directory.CreateDirectory(root);
-   FolderNaming.CreateCollection(root,"re:zero");
-   Application.EnableVisualStyles();
-   Application.SetCompatibleTextRenderingDefault(false);
-   using(var shelf=new Shelf()){
-    PrepareWindow(shelf);
-    shelf.PrepareScreenshotLibrary(root);
-    if(!shelf.OpenScreenshotCollection("re:zero"))throw new Exception("VideoShelf did not open the real re:zero collection view correctly.");
-    Settle(shelf);
-    SaveWindow(shelf,outputPath);
-   }
-   Verify(outputPath,5000);
-  }finally{
-   try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}
-  }
+  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-detail-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,"re:zero");Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.OpenScreenshotCollection("re:zero"))throw new Exception("VideoShelf did not open the real re:zero collection view correctly.");Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
-
- public static void CaptureOnlineResults(string displayName,string query,string torznabUrl,string outputPath,int expectedResults){
-  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-online-screenshot-"+Guid.NewGuid().ToString("N"));
-  try{
-   Directory.CreateDirectory(root);
-   FolderNaming.CreateCollection(root,displayName);
-   Application.EnableVisualStyles();
-   Application.SetCompatibleTextRenderingDefault(false);
-   using(var shelf=new Shelf()){
-    PrepareWindow(shelf);
-    shelf.PrepareScreenshotLibrary(root);
-    if(!shelf.PrepareOnlineScreenshot(displayName,query,torznabUrl,expectedResults))
-     throw new Exception("VideoShelf did not receive enough seeded online results from the metadata source.");
-    Settle(shelf);
-    SaveWindow(shelf,outputPath);
-   }
-   Verify(outputPath,5000);
-  }finally{
-   try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}
-  }
+ public static void CaptureOnlineResults(string displayName,string query,string sourceUrl,string outputPath,int expectedResults){
+  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-online-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,displayName);Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.PrepareOnlineScreenshot(displayName,query,sourceUrl,expectedResults))throw new Exception("VideoShelf did not receive enough seeded online results from the metadata source.");Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
-
- static void PrepareWindow(Shelf shelf){
-  shelf.Size=new Size(1120,780);
-  shelf.StartPosition=FormStartPosition.Manual;
-  shelf.Location=new Point(20,20);
-  shelf.Show();
-  Application.DoEvents();
- }
- static void Settle(Shelf shelf){
-  shelf.PerformLayout();
-  foreach(Control c in shelf.Controls)c.PerformLayout();
-  shelf.Refresh();
-  Application.DoEvents();
-  Thread.Sleep(300);
-  Application.DoEvents();
- }
- static void SaveWindow(Shelf shelf,string outputPath){
-  using(var bitmap=new Bitmap(shelf.ClientSize.Width,shelf.ClientSize.Height,PixelFormat.Format32bppArgb)){
-   shelf.DrawToBitmap(bitmap,new Rectangle(Point.Empty,shelf.ClientSize));
-   string directory=Path.GetDirectoryName(outputPath);
-   if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);
-   bitmap.Save(outputPath,ImageFormat.Png);
-  }
-  shelf.Hide();
- }
- static void Verify(string outputPath,long minBytes){
-  if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<minBytes)throw new Exception("Screenshot was not created correctly.");
- }
+ public static void CaptureMockupSearch(string outputPath){Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareMockupSearch();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,12000);}
+ static void Init(){Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
+ static void PrepareWindow(Shelf shelf){shelf.Size=new Size(1536,1024);shelf.StartPosition=FormStartPosition.Manual;shelf.Location=new Point(20,20);shelf.Show();Application.DoEvents();}
+ static void Settle(Shelf shelf){shelf.PerformLayout();foreach(Control c in shelf.Controls)c.PerformLayout();shelf.Refresh();Application.DoEvents();Thread.Sleep(350);Application.DoEvents();}
+ static void SaveWindow(Shelf shelf,string outputPath){using(var bitmap=new Bitmap(shelf.ClientSize.Width,shelf.ClientSize.Height,PixelFormat.Format32bppArgb)){shelf.DrawToBitmap(bitmap,new Rectangle(Point.Empty,shelf.ClientSize));string directory=Path.GetDirectoryName(outputPath);if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);bitmap.Save(outputPath,ImageFormat.Png);}shelf.Hide();}
+ static void Verify(string outputPath,long minBytes){if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<minBytes)throw new Exception("Screenshot was not created correctly.");}
 }
 
 sealed partial class Shelf {
- internal bool ScreenshotThumbnailsLoading { get { return thumbnailsLoading; } }
-
  internal void PrepareScreenshotLibrary(string path){
-  generation++;
-  portraitScan.Cancel();
-  onlineScan.Cancel();
-  thumbnailScan.Cancel();
-  current=null;
-  root=path;
-  onlineMode=false;
-  fetchingPortraits=false;
-  onlineSearching=false;
-  skipped=0;
-  ClearSearch();
-  SetSort(false);
-  detail.Visible=false;
-  cards.Visible=true;
-  back.Visible=false;
-  ClearCards();
-  foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();
-  people=new List<Person>();
-  foreach(string dir in Directory.GetDirectories(path).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase)){
-   people.Add(new Person{Path=dir,Name=FolderNaming.DisplayName(dir)});
-  }
-  title.Text="";
-  subtitle.Text=root;
-  SetHeader(false);
-  Render();
+  generation++;portraitScan.Cancel();onlineScan.Cancel();thumbnailScan.Cancel();current=null;root=path;fetchingPortraits=false;onlineSearching=false;thumbnailsLoading=false;thumbnailsPaused=false;skipped=0;selectedOnline=null;homePath.Text=root;settingsPath.Text=root;addFolder.Enabled=true;ClearCards();foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();people=new List<Person>();foreach(string dir in Directory.GetDirectories(path).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))people.Add(new Person{Path=dir,Name=FolderNaming.DisplayName(dir)});RenderHome();
  }
-
- internal bool PullScreenshotPortrait(string name){
-  Person person=people.FirstOrDefault(p=>p.Name.Equals(name,StringComparison.OrdinalIgnoreCase));
-  if(person==null)return false;
-  PortraitLookup.Forget(name);
-  using(var result=PortraitLookup.Find(name,CancellationToken.None).GetAwaiter().GetResult()){
-   if(result.Photo==null)return false;
-   ApplyPortrait(person,result);
-  }
-  Render();
-  Application.DoEvents();
-  return person.Photo!=null;
+ internal bool PullScreenshotPortrait(string name){Person person=people.FirstOrDefault(p=>p.Name.Equals(name,StringComparison.OrdinalIgnoreCase));if(person==null)return false;PortraitLookup.Forget(name);using(var result=PortraitLookup.Find(name,CancellationToken.None).GetAwaiter().GetResult()){if(result.Photo==null)return false;ApplyPortrait(person,result);}RenderHome();Application.DoEvents();return person.Photo!=null;}
+ internal bool OpenScreenshotCollection(string displayName){Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));if(person==null)return false;OpenPerson(person);DateTime deadline=DateTime.UtcNow.AddSeconds(5);while(DateTime.UtcNow<deadline){Application.DoEvents();if(current==person&&section==ShellSection.Collections&&collectionView.Visible&&statusLeft.Text.IndexOf("local video",StringComparison.OrdinalIgnoreCase)>=0)return true;Thread.Sleep(50);}return current==person&&collectionView.Visible;}
+ internal bool PrepareOnlineScreenshot(string displayName,string query,string sourceUrl,int expectedResults){
+  Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));if(person==null)return false;var source=new OnlineSettings{Url=sourceUrl,ApiKey="",AutoSearch=false};List<OnlineResult> found;using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10)))found=TorznabSearch.Search(query,source,timeout.Token).GetAwaiter().GetResult();found=found.Where(r=>r.Seeders>0).Take(24).ToList();if(found.Count<expectedResults)return false;generation++;current=person;onlineSearching=false;onlineError="";onlineQueryFor=query;onlineSettings=source;onlineResults=found;selectedOnline=found.FirstOrDefault();thumbnailsLoading=false;thumbnailsPaused=true;onlineQuery.Text=query;RefreshSourceFilter();ShowSection(searchView,ShellSection.Search);RenderOnline();Application.DoEvents();return onlineCards.Controls.Count>=expectedResults;
  }
-
- internal bool OpenScreenshotCollection(string displayName){
-  Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));
-  if(person==null)return false;
-  OpenPerson(person);
-  DateTime deadline=DateTime.UtcNow.AddSeconds(5);
-  while(DateTime.UtcNow<deadline){
-   Application.DoEvents();
-   if(current==person&&detail.Visible&&localDetail.Visible&&status.Text.IndexOf("local videos",StringComparison.OrdinalIgnoreCase)>=0)return true;
-   Thread.Sleep(50);
-  }
-  return current==person&&detail.Visible&&localDetail.Visible;
+ internal void PrepareMockupSearch(){
+  generation++;current=new Person{Name="re:zero",Path=Path.Combine(Path.GetTempPath(),"re-zero")};onlineQuery.Text="re:zero";onlineQueryFor="re:zero";onlineError="";onlineSearching=false;thumbnailsPaused=true;thumbnailsLoading=false;onlineResults=new List<OnlineResult>();
+  string[] titles={"Re:Zero – Starting Life in Another World (S1) [1080p] x264 Dual Audio Subbed","Re:Zero – Starting Life in Another World (S2) [1080p] x264 Dual Audio Subbed","Re:Zero – Starting Life in Another World (S3) [1080p] x264 Dual Audio Subbed","Re:Zero – Memory Snow (OVA) [1080p] x264 Dual Audio Subbed","Re:Zero – The Frozen Bond (OVA) [1080p] x264 Dual Audio Subbed","Re:Zero – Starting Life in Another World (Director's Cut) [1080p] x264 Dual Audio Subbed","Re:Zero – Specials [1080p] x264 Subbed","Re:Zero – Starting Life in Another World (S1) [720p] x264 Dual Audio Subbed"};
+  int[] seeds={1245,892,620,431,398,287,210,198};int[] leeches={32,18,14,6,4,3,1,5};double[] gb={8.4,9.1,6.8,1.2,1.3,7.6,2.1,4.3};DateTime[] dates={new DateTime(2020,10,14),new DateTime(2021,3,24),new DateTime(2024,4,3),new DateTime(2019,6,28),new DateTime(2019,11,8),new DateTime(2020,1,1),new DateTime(2020,5,10),new DateTime(2020,10,14)};
+  for(int i=0;i<24;i++){int x=i%titles.Length;onlineResults.Add(new OnlineResult{Title=i<titles.Length?titles[x]:titles[x]+" batch "+(i+1),Resolution=titles[x].IndexOf("720p",StringComparison.OrdinalIgnoreCase)>=0?"720p":"1080p",Size=(long)(gb[x]*1073741824d),Seeders=Math.Max(1,seeds[x]-i*3),Leechers=leeches[x],Source="Nyaa.si",Published=dates[x],Link="magnet:?xt=urn:btih:"+new string((char)('A'+(i%6)),40)});}
+  selectedOnline=onlineResults[0];RefreshSourceFilter();suppress=true;categoryFilter.SelectedItem="Anime";resolution.SelectedIndex=0;sourceFilter.SelectedIndex=0;suppress=false;ShowSection(searchView,ShellSection.Search);RenderOnline();int index=0;foreach(var card in onlineCards.Controls.OfType<OnlineResultCard>()){using(var image=MakeFixturePreview(index++))card.SetPreview(image);}RenderInspector();SetStatus("Ready","Results are metadata only. No files are downloaded.");
  }
-
- internal bool PrepareOnlineScreenshot(string displayName,string query,string torznabUrl,int expectedResults){
-  Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));
-  if(person==null)return false;
-  var source=new OnlineSettings{Url=torznabUrl,ApiKey="",AutoSearch=false};
-  List<OnlineResult> found;
-  using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10))){
-   found=TorznabSearch.Search(query,source,timeout.Token).GetAwaiter().GetResult();
-  }
-  found=found.Where(r=>r.Seeders>0).Take(8).ToList();
-  if(found.Count<expectedResults)return false;
-
-  generation++;
-  current=person;
-  onlineMode=true;
-  onlineSearching=false;
-  onlineError="";
-  onlineQueryFor=query;
-  onlineSettings=source;
-  onlineResults=found;
-  thumbnailsLoading=false;
-  thumbnailsPaused=true;
-  ClearSearch();
-  SetSort(true);
-  back.Visible=true;
-  cards.Visible=false;
-  detail.Visible=true;
-  localDetail.Visible=false;
-  onlineDetail.Visible=true;
-  onlineDetail.BringToFront();
-  title.Text=displayName;
-  SetHeader(true);
-  subtitle.Text="Online results for "+displayName+" • live metadata only";
-  onlineQuery.Text=query;
-  RenderOnline();
-  Application.DoEvents();
-  return onlineFiles.Items.Count>=expectedResults;
- }
+ Image MakeFixturePreview(int index){var bmp=new Bitmap(292,156);using(Graphics g=Graphics.FromImage(bmp)){g.Clear(Color.FromArgb(22+index*2,42+index*3,62+index*2));using(var b=new SolidBrush(Color.FromArgb(40,XdolfTheme.AccentBlue)))g.FillEllipse(b,150-index*3,-30+index*4,190,190);using(var b=new SolidBrush(Color.FromArgb(65,255,255,255)))g.FillRectangle(b,0,105,292,51);using(var f=new Font("Segoe UI",22,FontStyle.Bold))TextRenderer.DrawText(g,index%2==0?"Re:ZERO":"Re:Zero",f,new Rectangle(8,42,276,50),Color.White,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);}return bmp;}
 }
 }
