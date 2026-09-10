@@ -36,9 +36,12 @@ static class OnlineThumbnailLookup {
 
  public static string SearchText(string title){
   string s=(title??"").Trim();
+  bool grouped=Regex.IsMatch(s,@"^\s*\[[^\]\r\n]{1,48}\]");
+  s=Regex.Replace(s,@"^\s*(?:\[[^\]\r\n]{1,48}\]\s*)+"," ");
   s=Regex.Replace(s,@"\.(torrent|mkv|mp4|avi|mov|wmv|webm|m4v)$"," ",RegexOptions.IgnoreCase);
   s=Regex.Replace(s,@"(?<![A-Za-z0-9])(2160p|1080p|720p|576p|540p|480p|360p|4k|uhd|fhd|hdr10\+?|hdr|dolby[ ._-]?vision|dv|x264|x265|h\.?264|h\.?265|hevc|av1|10bit|8bit|bluray|blu[ ._-]?ray|bdrip|brrip|web[ ._-]?dl|webrip|webcap|hdtv|dvdrip|remux|aac(?:2\.0|5\.1)?|ac3|eac3|ddp(?:2\.0|5\.1)?|dts(?:hd)?|truehd|atmos|flac|mp3|proper|repack|rerip|internal|limited|extended|uncut|multi|dual[ ._-]?audio)(?![A-Za-z0-9])"," ",RegexOptions.IgnoreCase);
   s=Regex.Replace(s,@"(?<![A-Za-z0-9])(?:\d{1,2}bit|\d{3,4}kbps|\d{2,3}fps)(?![A-Za-z0-9])"," ",RegexOptions.IgnoreCase);
+  if(grouped)s=Regex.Replace(s,@"\s+-\s*(?:episode\s*)?\d{1,4}\b.*$"," ",RegexOptions.IgnoreCase);
   s=Regex.Replace(s,@"[._]+"," ");
   s=Regex.Replace(s,@"[\[\]\(\)\{\}]"," ");
   s=Regex.Replace(s,@"\s+-\s*[A-Za-z0-9][A-Za-z0-9._-]{1,20}\s*$"," ");
