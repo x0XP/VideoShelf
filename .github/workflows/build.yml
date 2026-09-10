@@ -20,31 +20,50 @@ jobs:
       - name: Render real re:zero GUI screenshot
         shell: cmd
         run: VideoShelf.exe --screenshot-rezero "%RUNNER_TEMP%\VideoShelf-rezero.png"
-      - name: Render re:zero View videos screenshot
-        shell: cmd
-        run: VideoShelf.exe --screenshot-rezero-videos "%RUNNER_TEMP%\VideoShelf-rezero-videos.png"
+      - name: Download genuine public video files
+        shell: powershell
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'VideoShelf-real-library'
+          $collection = Join-Path $root 'Blender Demos'
+          New-Item -ItemType Directory -Force -Path $collection | Out-Null
+          $files = @(
+            @{ Name = 'ton_bug_1999.mpg'; Url = 'https://download.blender.org/demo/movies/ton_bug_1999.mpg' },
+            @{ Name = 'Vinicius-Zanete-Novaes_Penalti.avi'; Url = 'https://download.blender.org/demo/movies/Vinicius-Zanete-Novaes_Penalti.avi' },
+            @{ Name = 'seamcut_blender242.mov'; Url = 'https://download.blender.org/demo/movies/seamcut_blender242.mov' }
+          )
+          foreach ($file in $files) {
+            $out = Join-Path $collection $file.Name
+            Invoke-WebRequest -Uri $file.Url -OutFile $out -UseBasicParsing
+            if (!(Test-Path $out) -or (Get-Item $out).Length -lt 100000) { throw "Real media download failed: $($file.Name)" }
+          }
+          "VIDEOSHELF_REAL_LIBRARY=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Render View videos from genuine media
+        shell: powershell
+        run: |
+          & .\VideoShelf.exe --screenshot-library-videos $env:VIDEOSHELF_REAL_LIBRARY 'Blender Demos' "$env:RUNNER_TEMP\VideoShelf-real-videos.png" 3
+          if ($LASTEXITCODE -ne 0) { throw "VideoShelf real-media screenshot failed with exit code $LASTEXITCODE" }
       - name: Verify screenshots
         shell: powershell
         run: |
           $library = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero.png'
-          $videos = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-videos.png'
+          $videos = Join-Path $env:RUNNER_TEMP 'VideoShelf-real-videos.png'
           if (!(Test-Path $library)) { throw 'VideoShelf library screenshot was not created.' }
-          if (!(Test-Path $videos)) { throw 'VideoShelf View videos screenshot was not created.' }
+          if (!(Test-Path $videos)) { throw 'VideoShelf real-media View videos screenshot was not created.' }
           if ((Get-Item $library).Length -lt 5000) { throw 'VideoShelf library screenshot is unexpectedly small.' }
-          if ((Get-Item $videos).Length -lt 5000) { throw 'VideoShelf View videos screenshot is unexpectedly small.' }
+          if ((Get-Item $videos).Length -lt 5000) { throw 'VideoShelf real-media View videos screenshot is unexpectedly small.' }
           Copy-Item $library .\VideoShelf-rezero.png
-          Copy-Item $videos .\VideoShelf-rezero-videos.png
+          Copy-Item $videos .\VideoShelf-real-videos.png
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: VideoShelf-windows
           path: VideoShelf.exe
           if-no-files-found: error
-      - name: Upload re:zero screenshots
+      - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: VideoShelf-rezero-screenshots
+          name: VideoShelf-real-source-screenshots
           path: |
             VideoShelf-rezero.png
-            VideoShelf-rezero-videos.png
+            VideoShelf-real-videos.png
           if-no-files-found: error
