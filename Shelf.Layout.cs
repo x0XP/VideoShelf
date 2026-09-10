@@ -10,7 +10,7 @@ sealed partial class Shelf {
  Button chromeMin,chromeMax,chromeClose;
  Label collectionEmptyCue;
  Panel shellStatusBar;
- bool shellChromePrepared,inspectorPlaceholderPaintHooked,libraryCueApplied;
+ bool shellChromePrepared,inspectorPlaceholderPaintHooked,libraryCueApplied,playButtonPaintHooked;
 
  protected override void OnShown(EventArgs e){
   base.OnShown(e);
@@ -104,6 +104,7 @@ sealed partial class Shelf {
    statusLeft.TextChanged+=delegate{if(collectionView.Visible)RefreshCollectionVisualState();};
   }
   if(!inspectorPlaceholderPaintHooked){inspectorImage.Paint+=PaintInspectorArtworkPlaceholder;inspectorPlaceholderPaintHooked=true;}
+  if(!playButtonPaintHooked){playLocal.Paint+=PaintDisabledPlayButton;playButtonPaintHooked=true;}
   LayoutStatusBarVisuals();LayoutCollectionAuxVisuals();RefreshCollectionVisualState();
  }
  void ApplyLibraryFilterCue(){
@@ -151,6 +152,13 @@ sealed partial class Shelf {
    e.Graphics.DrawLine(p,cx+5,cy+13,cx+48,cy-20);
   }
   using(var f=new Font("Segoe UI",8.5f))TextRenderer.DrawText(e.Graphics,"Artwork preview",f,new Rectangle(0,cy+38,w,20),Color.FromArgb(111,137,160),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);
+ }
+ void PaintDisabledPlayButton(object sender,PaintEventArgs e){
+  if(playLocal.Enabled)return;
+  Rectangle r=new Rectangle(0,0,Math.Max(1,playLocal.ClientSize.Width-1),Math.Max(1,playLocal.ClientSize.Height-1));
+  using(var b=new SolidBrush(Color.FromArgb(10,20,29)))e.Graphics.FillRectangle(b,r);
+  using(var p=new Pen(Color.FromArgb(31,49,63)))e.Graphics.DrawRectangle(p,r);
+  TextRenderer.DrawText(e.Graphics,playLocal.Text,playLocal.Font,r,Color.FromArgb(112,133,153),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.NoPadding);
  }
  void PrepareCaptionButton(Button button){
   button.Text="";button.TabStop=false;button.AutoSize=false;button.Width=46;button.Height=34;
