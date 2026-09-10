@@ -36,22 +36,31 @@ static class BuiltInOnlineSearch {
 
   var responses=new List<SourceResult>();
   bool deadlineReached=false;
-  using(var requests=CancellationTokenSource.CreateLinkedTokenSource(ct)){
-   var pending=Sources.Select(source=>SearchSource(source,normalized,requests.Token)).Concat(new[]{SearchApiBay(normalized,requests.Token)}).ToList();
-   Task deadline=Task.Delay(TimeSpan.FromSeconds(11),ct);
-   while(pending.Count>0){
-    Task completed=await Task.WhenAny(pending.Select(t=>(Task)t).Concat(new[]{deadline}));
-    if(object.ReferenceEquals(completed,deadline)){
-     deadlineReached=true;
-     break;
-    }
-    var finished=(Task<SourceResult>)completed;
-    pending.Remove(finished);
-    try{responses.Add(await finished);}
-    catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;responses.Add(new SourceResult{Failed=true});}
-    catch{responses.Add(new SourceResult{Failed=true});}
+
+  // Keep the aggregate deadline independent from request cancellation. On the
+  // .NET Framework HttpClient stack a cancellation callback can itself block
+  // while a DNS/TLS request is wedged. The UI must never wait for that cleanup.
+  var pending=Sources
+   .Select(source=>Task.Run(()=>SearchSource(source,normalized)))
+   .Concat(new[]{Task.Run(()=>SearchApiBay(normalized))})
+   .ToList();
+  Task deadline=Task.Delay(TimeSpan.FromSeconds(11));
+  Task cancelled=Task.Delay(Timeout.Infinite,ct);
+
+  while(pending.Count>0){
+   Task completed=await Task.WhenAny(pending.Select(t=>(Task)t).Concat(new[]{deadline,cancelled})).ConfigureAwait(false);
+   if(object.ReferenceEquals(completed,cancelled)){
+    ct.ThrowIfCancellationRequested();
    }
-   requests.Cancel();
+   if(object.ReferenceEquals(completed,deadline)){
+    deadlineReached=true;
+    break;
+   }
+   var finished=(Task<SourceResult>)completed;
+   pending.Remove(finished);
+   try{responses.Add(await finished.ConfigureAwait(false));}
+   catch(OperationCanceledException){responses.Add(new SourceResult{Failed=true});}
+   catch{responses.Add(new SourceResult{Failed=true});}
   }
 
   ct.ThrowIfCancellationRequested();
@@ -74,12 +83,12 @@ static class BuiltInOnlineSearch {
    throw new InvalidOperationException("Built-in metadata parser self-test failed.");
  }
 
- static async Task<SourceResult> SearchSource(string source,string query,CancellationToken parent){
+ static async Task<SourceResult> SearchSource(string source,string query){
   var response=new SourceResult();
-  using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(parent)){
+  using(var timeout=new CancellationTokenSource()){
    timeout.CancelAfter(TimeSpan.FromSeconds(10));
    try{
-    var found=await TorznabSearch.Search(query,new OnlineSettings{Url=source,ApiKey="",AutoSearch=true},timeout.Token);
+    var found=await TorznabSearch.Search(query,new OnlineSettings{Url=source,ApiKey="",AutoSearch=true},timeout.Token).ConfigureAwait(false);
     if(found!=null){
      Uri uri;string probe=source.Replace("{query}","search");string fallback=Uri.TryCreate(probe,UriKind.Absolute,out uri)?uri.Host:"Built-in";
      foreach(var row in found.Where(r=>r!=null&&r.Seeders>0)){
@@ -93,9 +102,9 @@ static class BuiltInOnlineSearch {
   return response;
  }
 
- static async Task<SourceResult> SearchApiBay(string query,CancellationToken parent){
+ static async Task<SourceResult> SearchApiBay(string query){
   var response=new SourceResult();
-  using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(parent)){
+  using(var timeout=new CancellationTokenSource()){
    timeout.CancelAfter(TimeSpan.FromSeconds(10));
    try{
     string url="https://apibay.org/q.php?q="+Uri.EscapeDataString(query)+"&cat=200";
