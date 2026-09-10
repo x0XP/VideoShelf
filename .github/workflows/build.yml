@@ -46,6 +46,7 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           $sources = @(
+            'https://bitsearch.to/api/v1/search?q={query}&sort=seeders&order=desc&limit=20',
             'https://nyaa.media/?page=rss&q={query}&c=1_2&f=0',
             'https://nyaa.mom/?page=rss&q={query}&c=1_2&f=0',
             'https://nyaa.si/?page=rss&q={query}&c=1_2&f=0',
@@ -79,9 +80,9 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-melody-marks-online.png'
           $sources = @(
+            'https://bitsearch.to/api/v1/search?q={query}&sort=seeders&order=desc&limit=20',
             'https://www.torlock2.com/torznab/api?cat=6000',
-            'https://www.torlock2.com/torznab/api',
-            'https://stremthrufortheweebs.midnightignite.me/v0/torznab/api'
+            'https://www.torlock2.com/torznab/api'
           )
           $success = $false
           foreach ($source in $sources) {
