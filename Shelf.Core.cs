@@ -43,7 +43,7 @@ sealed partial class Shelf : Form {
   var bar=new Panel{Dock=DockStyle.Top,Height=34,BackColor=Color.FromArgb(5,12,18)};Controls.Add(bar);bar.BringToFront();
   var icon=new Label{Text="◈",Left=10,Top=5,Width=23,Height=23,ForeColor=XdolfTheme.AccentBlue,TextAlign=ContentAlignment.MiddleCenter,Font=new Font("Segoe UI Symbol",11,FontStyle.Bold)};
   var caption=new Label{Text="VideoShelf v1.7",Left=38,Top=7,Width=220,Height=20,ForeColor=XdolfTheme.TextStrong,Font=new Font("Segoe UI",9.5f)};
-  var min=WindowButton("—"),max=WindowButton("□"),close=WindowButton("×");min.Left=Width-135;max.Left=Width-90;close.Left=Width-45;foreach(var b in new[]{min,max,close}){b.Anchor=AnchorStyles.Top|AnchorStyles.Right;bar.Controls.Add(b);}bar.Controls.AddRange(new Control[]{icon,caption});
+  Button min=WindowButton("—"),max=WindowButton("□"),close=WindowButton("×");min.Left=Width-135;max.Left=Width-90;close.Left=Width-45;foreach(var b in new[]{min,max,close}){b.Anchor=AnchorStyles.Top|AnchorStyles.Right;bar.Controls.Add(b);}bar.Controls.AddRange(new Control[]{icon,caption});
   min.Click+=delegate{WindowState=FormWindowState.Minimized;};max.Click+=delegate{ToggleMaximize();};close.Click+=delegate{Close();};
   MouseEventHandler drag=delegate(object s,MouseEventArgs e){if(e.Button==MouseButtons.Left){ReleaseCapture();SendMessage(Handle,0xA1,0x2,0);}};bar.MouseDown+=drag;caption.MouseDown+=drag;icon.MouseDown+=drag;bar.DoubleClick+=delegate{ToggleMaximize();};
  }
