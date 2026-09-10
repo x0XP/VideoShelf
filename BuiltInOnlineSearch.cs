@@ -30,17 +30,38 @@ static class BuiltInOnlineSearch {
  }
 
  public static async Task<List<OnlineResult>> Search(string query,CancellationToken ct){
+  ct.ThrowIfCancellationRequested();
   string normalized=Regex.Replace((query??"").Trim(),@"[^\p{L}\p{N}]+"," ").Trim();
   if(normalized.Length==0)normalized=(query??"").Trim();
-  var tasks=Sources.Select(source=>SearchSource(source,normalized,ct)).Concat(new[]{SearchApiBay(normalized,ct)}).ToArray();
-  SourceResult[] responses=await Task.WhenAll(tasks);
+
+  var responses=new List<SourceResult>();
+  bool deadlineReached=false;
+  using(var requests=CancellationTokenSource.CreateLinkedTokenSource(ct)){
+   var pending=Sources.Select(source=>SearchSource(source,normalized,requests.Token)).Concat(new[]{SearchApiBay(normalized,requests.Token)}).ToList();
+   Task deadline=Task.Delay(TimeSpan.FromSeconds(11),ct);
+   while(pending.Count>0){
+    Task completed=await Task.WhenAny(pending.Select(t=>(Task)t).Concat(new[]{deadline}));
+    if(object.ReferenceEquals(completed,deadline)){
+     deadlineReached=true;
+     break;
+    }
+    var finished=(Task<SourceResult>)completed;
+    pending.Remove(finished);
+    try{responses.Add(await finished);}
+    catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;responses.Add(new SourceResult{Failed=true});}
+    catch{responses.Add(new SourceResult{Failed=true});}
+   }
+   requests.Cancel();
+  }
+
   ct.ThrowIfCancellationRequested();
   var combined=responses.SelectMany(r=>r.Results).Where(r=>r!=null&&r.Seeders>0&&!string.IsNullOrWhiteSpace(r.Link)).ToList();
   var result=combined
    .GroupBy(r=>string.IsNullOrWhiteSpace(r.Link)?r.Title:r.Link,StringComparer.OrdinalIgnoreCase)
    .Select(g=>g.OrderByDescending(r=>r.Seeders).First())
    .OrderByDescending(r=>r.Seeders).ThenByDescending(r=>r.Published).ThenBy(r=>r.Title,StringComparer.OrdinalIgnoreCase).Take(80).ToList();
-  if(result.Count==0&&responses.Length>0&&responses.All(r=>r.Failed))throw new InvalidOperationException("Built-in metadata sources are currently unavailable. You can retry or configure a custom source in Settings.");
+  if(result.Count==0&&((responses.Count==0&&deadlineReached)||(responses.Count>0&&responses.All(r=>r.Failed))))
+   throw new InvalidOperationException("Built-in metadata sources are currently unavailable. You can retry or configure a custom source in Settings.");
   return result;
  }
 
@@ -66,7 +87,7 @@ static class BuiltInOnlineSearch {
       response.Results.Add(row);
      }
     }
-   }catch(OperationCanceledException){if(parent.IsCancellationRequested)throw;response.Failed=true;}
+   }catch(OperationCanceledException){response.Failed=true;}
    catch{response.Failed=true;}
   }
   return response;
@@ -85,7 +106,7 @@ static class BuiltInOnlineSearch {
     }
     timeout.Token.ThrowIfCancellationRequested();
     response.Results=ParseApiBayPayload(payload,timeout.Token);
-   }catch(OperationCanceledException){if(parent.IsCancellationRequested)throw;response.Failed=true;}
+   }catch(OperationCanceledException){response.Failed=true;}
    catch{response.Failed=true;}
   }
   return response;
