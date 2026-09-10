@@ -44,6 +44,15 @@ static class BuiltInOnlineSearch {
   return result;
  }
 
+ public static void SelfTest(){
+  const string sample="[{\"id\":\"123\",\"name\":\"VideoShelf Test S01 1080p\",\"info_hash\":\"0123456789abcdef0123456789abcdef01234567\",\"seeders\":\"42\",\"leechers\":\"7\",\"size\":\"1073741824\",\"added\":\"1700000000\"},{\"id\":\"124\",\"name\":\"Zero Seeder Must Be Hidden\",\"info_hash\":\"abcdef0123456789abcdef0123456789abcdef01\",\"seeders\":\"0\",\"leechers\":\"1\",\"size\":\"1000\",\"added\":\"1700000001\"}]";
+  var rows=ParseApiBayPayload(sample,CancellationToken.None);
+  if(rows.Count!=1)throw new InvalidOperationException("Built-in metadata parser did not enforce the zero-seeder invariant.");
+  var row=rows[0];
+  if(row.Seeders!=42||row.Leechers!=7||row.Size!=1073741824L||row.Resolution!="1080p"||!row.Link.StartsWith("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",StringComparison.OrdinalIgnoreCase))
+   throw new InvalidOperationException("Built-in metadata parser self-test failed.");
+ }
+
  static async Task<SourceResult> SearchSource(string source,string query,CancellationToken parent){
   var response=new SourceResult();
   using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(parent)){
@@ -75,28 +84,34 @@ static class BuiltInOnlineSearch {
      payload=await message.Content.ReadAsStringAsync().ConfigureAwait(false);
     }
     timeout.Token.ThrowIfCancellationRequested();
-    var serializer=new JavaScriptSerializer{MaxJsonLength=16*1024*1024};
-    var rows=serializer.DeserializeObject(payload) as object[];
-    if(rows==null)return response;
-    foreach(object raw in rows){
-     timeout.Token.ThrowIfCancellationRequested();
-     var item=raw as Dictionary<string,object>;if(item==null)continue;
-     string title=StringValue(item,"name");if(title.Length==0)continue;
-     int seeders=IntValue(item,"seeders");if(seeders<=0)continue;
-     string hash=StringValue(item,"info_hash");if(!Regex.IsMatch(hash,@"^[A-Fa-f0-9]{40}$"))continue;
-     int leechers=IntValue(item,"leechers");
-     long size=LongValue(item,"size");
-     long added=LongValue(item,"added");DateTime published=DateTime.MinValue;
-     if(added>0)try{published=new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddSeconds(added);}catch{}
-     string id=StringValue(item,"id");
-     string page=id.Length>0?"https://thepiratebay.org/description.php?id="+Uri.EscapeDataString(id):"";
-     string link="magnet:?xt=urn:btih:"+hash+"&dn="+Uri.EscapeDataString(title);
-     response.Results.Add(new OnlineResult{Title=title,Link=link,PageUrl=page,Source="apibay.org",Resolution=DetectResolution(title),Size=size,Seeders=seeders,Leechers=leechers,Published=published});
-    }
+    response.Results=ParseApiBayPayload(payload,timeout.Token);
    }catch(OperationCanceledException){if(parent.IsCancellationRequested)throw;response.Failed=true;}
    catch{response.Failed=true;}
   }
   return response;
+ }
+
+ static List<OnlineResult> ParseApiBayPayload(string payload,CancellationToken ct){
+  var results=new List<OnlineResult>();
+  var serializer=new JavaScriptSerializer{MaxJsonLength=16*1024*1024};
+  var rows=serializer.DeserializeObject(payload) as object[];
+  if(rows==null)return results;
+  foreach(object raw in rows){
+   ct.ThrowIfCancellationRequested();
+   var item=raw as Dictionary<string,object>;if(item==null)continue;
+   string title=StringValue(item,"name");if(title.Length==0)continue;
+   int seeders=IntValue(item,"seeders");if(seeders<=0)continue;
+   string hash=StringValue(item,"info_hash");if(!Regex.IsMatch(hash,@"^[A-Fa-f0-9]{40}$"))continue;
+   int leechers=IntValue(item,"leechers");
+   long size=LongValue(item,"size");
+   long added=LongValue(item,"added");DateTime published=DateTime.MinValue;
+   if(added>0)try{published=new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddSeconds(added);}catch{}
+   string id=StringValue(item,"id");
+   string page=id.Length>0?"https://thepiratebay.org/description.php?id="+Uri.EscapeDataString(id):"";
+   string link="magnet:?xt=urn:btih:"+hash+"&dn="+Uri.EscapeDataString(title);
+   results.Add(new OnlineResult{Title=title,Link=link,PageUrl=page,Source="apibay.org",Resolution=DetectResolution(title),Size=size,Seeders=seeders,Leechers=leechers,Published=published});
+  }
+  return results;
  }
 
  static object Value(Dictionary<string,object> item,string key){object value;return item!=null&&item.TryGetValue(key,out value)?value:null;}
