@@ -4,9 +4,18 @@ using System.Windows.Forms;
 
 namespace VideoShelf {
 sealed partial class Shelf {
- bool finalPolishApplied;
- MockupFilter sourceVisual,categoryVisual,resolutionVisual;
+ bool finalPolishApplied,homePolishApplied;
+ MockupFilter sourceVisual,categoryVisual,resolutionVisual,sortVisual;
  InspectorMetadataView inspectorMetadataVisual;
+ SearchScrollRail onlineRail;
+
+ void ApplyHomePolish(){
+  if(homePolishApplied)return;
+  homePolishApplied=true;
+  sortVisual=CreateFilter(homeSort);homeSort.Visible=false;
+  LayoutHomePolish();
+ }
+ void LayoutHomePolish(){if(sortVisual!=null){sortVisual.SetBounds(700,101,160,32);sortVisual.BringToFront();}}
 
  void ApplyFinalPolish(){
   if(finalPolishApplied)return;
@@ -25,6 +34,8 @@ sealed partial class Shelf {
 
   inspectorTitle.AutoEllipsis=false;
   inspectorTitle.TextAlign=ContentAlignment.TopLeft;
+
+  if(onlineCards.Parent!=null){onlineRail=new SearchScrollRail(onlineCards);onlineCards.Parent.Controls.Add(onlineRail);onlineRail.BringToFront();}
   LayoutFinalPolish();
  }
  MockupFilter CreateFilter(ComboBox combo){
@@ -43,6 +54,10 @@ sealed partial class Shelf {
    int h=downloadVisual==null?220:Math.Max(105,downloadVisual.Top-371);
    inspectorMetadataVisual.SetBounds(13,356,w,h);
    inspectorMetadataVisual.BringToFront();
+  }
+  if(onlineRail!=null&&onlineCards.Parent==onlineRail.Parent){
+   onlineRail.SetBounds(Math.Max(0,onlineCards.Right-18),onlineCards.Top,18,Math.Max(0,onlineCards.Height));
+   onlineRail.BringToFront();
   }
  }
 }
