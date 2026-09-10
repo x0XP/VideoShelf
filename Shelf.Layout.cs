@@ -7,7 +7,9 @@ namespace VideoShelf {
 sealed partial class Shelf {
  MockupActionButton downloadVisual,streamVisual;
  Button chromeMin,chromeMax,chromeClose;
- bool shellChromePrepared;
+ Label collectionFilterCue,collectionEmptyCue;
+ Panel shellStatusBar;
+ bool shellChromePrepared,inspectorPlaceholderPaintHooked;
 
  protected override void OnShown(EventArgs e){
   base.OnShown(e);
@@ -17,6 +19,8 @@ sealed partial class Shelf {
   ApplyHomePolish();
   LayoutHomePolish();
   EnsureHomeDashboard();
+  EnsureShellAuxVisuals();
+  RefreshCollectionVisualState();
   if(section==ShellSection.Home)ShowDashboardHome();
  }
  protected override void OnResize(EventArgs e){
@@ -48,11 +52,13 @@ sealed partial class Shelf {
   body.SendToBack();
 
   EnsureShellChrome();
+  EnsureShellAuxVisuals();
   navHome.Top=116;navSearch.Top=170;navCollections.Top=224;navDownloads.Top=278;navStreaming.Top=332;navSettings.Top=386;
   LayoutSearchSurface();
   if(homePolishApplied)LayoutHomePolish();
   if(homeDashboardReady)LayoutDashboardHome();
   if(finalPolishApplied)LayoutFinalPolish();
+  LayoutCollectionAuxVisuals();
   body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
  }
  void EnsureShellChrome(){
@@ -77,6 +83,80 @@ sealed partial class Shelf {
    }
   }
   LayoutCaptionButtons();
+ }
+ void EnsureShellAuxVisuals(){
+  if(shellStatusBar==null){
+   shellStatusBar=Controls.OfType<Panel>().FirstOrDefault(p=>p.Dock==DockStyle.Bottom&&p.Height>=28&&p.Height<=30);
+   if(shellStatusBar!=null){
+    statusLeft.AutoEllipsis=true;statusRight.AutoEllipsis=true;
+    statusLeft.Anchor=AnchorStyles.Top|AnchorStyles.Left;statusRight.Anchor=AnchorStyles.Top|AnchorStyles.Left;
+    shellStatusBar.Resize+=delegate{LayoutStatusBarVisuals();};
+   }
+  }
+  if(collectionFilterCue==null&&libraryFilter.Parent!=null){
+   collectionFilterCue=new Label{Text="Filter collections",BackColor=libraryFilter.BackColor,ForeColor=Color.FromArgb(132,153,173),TextAlign=ContentAlignment.MiddleLeft,Cursor=Cursors.IBeam,Font=libraryFilter.Font};
+   libraryFilter.Parent.Controls.Add(collectionFilterCue);
+   collectionFilterCue.Click+=delegate{libraryFilter.Focus();};
+   libraryFilter.TextChanged+=delegate{RefreshCollectionFilterCue();};
+   libraryFilter.Enter+=delegate{RefreshCollectionFilterCue();};
+   libraryFilter.Leave+=delegate{RefreshCollectionFilterCue();};
+  }
+  if(collectionEmptyCue==null){
+   collectionEmptyCue=new Label{TextAlign=ContentAlignment.MiddleCenter,BackColor=files.BackColor,ForeColor=XdolfTheme.Muted,Font=new Font("Segoe UI",10.5f),Visible=false};
+   collectionView.Controls.Add(collectionEmptyCue);collectionEmptyCue.BringToFront();
+   collectionView.VisibleChanged+=delegate{RefreshCollectionVisualState();};
+   files.SelectedIndexChanged+=delegate{RefreshCollectionVisualState();};
+   files.Resize+=delegate{RefreshCollectionVisualState();};
+   statusLeft.TextChanged+=delegate{if(collectionView.Visible)RefreshCollectionVisualState();};
+  }
+  if(!inspectorPlaceholderPaintHooked){inspectorImage.Paint+=PaintInspectorArtworkPlaceholder;inspectorPlaceholderPaintHooked=true;}
+  LayoutStatusBarVisuals();LayoutCollectionAuxVisuals();RefreshCollectionFilterCue();RefreshCollectionVisualState();
+ }
+ void LayoutStatusBarVisuals(){
+  if(shellStatusBar==null||shellStatusBar.IsDisposed)return;
+  int w=shellStatusBar.ClientSize.Width,leftWidth=Math.Min(500,Math.Max(180,w/3));
+  statusLeft.SetBounds(18,6,leftWidth,18);
+  int rightX=leftWidth+36;statusRight.SetBounds(rightX,6,Math.Max(0,w-rightX-18),18);
+ }
+ void LayoutCollectionAuxVisuals(){
+  if(collectionFilterCue!=null&&libraryFilter.Parent!=null){
+   if(collectionFilterCue.Parent!=libraryFilter.Parent)collectionFilterCue.Parent=libraryFilter.Parent;
+   collectionFilterCue.SetBounds(libraryFilter.Left+9,libraryFilter.Top+4,Math.Max(40,libraryFilter.Width-18),Math.Max(18,libraryFilter.Height-8));
+   collectionFilterCue.BringToFront();
+  }
+  if(collectionEmptyCue!=null){
+   collectionEmptyCue.SetBounds(files.Left+1,files.Top+25,Math.Max(0,files.Width-2),82);
+   if(collectionEmptyCue.Visible)collectionEmptyCue.BringToFront();
+  }
+ }
+ void RefreshCollectionFilterCue(){
+  if(collectionFilterCue==null)return;
+  collectionFilterCue.Visible=libraryFilter.Visible&&!libraryFilter.Focused&&string.IsNullOrEmpty(libraryFilter.Text);
+  if(collectionFilterCue.Visible)collectionFilterCue.BringToFront();
+ }
+ internal void RefreshCollectionVisualState(){
+  if(files==null||files.IsDisposed)return;
+  bool empty=files.Items.Count==0;
+  playLocal.Enabled=files.SelectedItems.Count>0;
+  int visibleRows=Math.Max(1,(Math.Max(0,files.ClientSize.Height-25))/22);
+  files.Scrollable=files.Items.Count>visibleRows;
+  NativeDarkScroll.Apply(files);
+  if(collectionEmptyCue!=null){
+   bool scanning=statusLeft.Text.StartsWith("Scanning collection",StringComparison.OrdinalIgnoreCase);
+   collectionEmptyCue.Text=scanning?"Scanning local videos…":"No local videos in this collection.\r\nUse Find online to search seeded metadata.";
+   collectionEmptyCue.Visible=empty&&collectionView.Visible;
+   LayoutCollectionAuxVisuals();
+  }
+ }
+ void PaintInspectorArtworkPlaceholder(object sender,PaintEventArgs e){
+  if(inspectorImage.Image!=null||inspectorImage.ClientSize.Width<40||inspectorImage.ClientSize.Height<40)return;
+  int w=inspectorImage.ClientSize.Width,h=inspectorImage.ClientSize.Height,cx=w/2,cy=h/2-8;
+  using(var p=new Pen(Color.FromArgb(48,72,92),2f)){
+   e.Graphics.DrawLine(p,cx-48,cy+24,cx-18,cy-8);
+   e.Graphics.DrawLine(p,cx-18,cy-8,cx+5,cy+13);
+   e.Graphics.DrawLine(p,cx+5,cy+13,cx+48,cy-20);
+  }
+  using(var f=new Font("Segoe UI",8.5f))TextRenderer.DrawText(e.Graphics,"Artwork preview",f,new Rectangle(0,cy+38,w,20),Color.FromArgb(111,137,160),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);
  }
  void PrepareCaptionButton(Button button){
   button.Text="";button.TabStop=false;button.AutoSize=false;button.Width=46;button.Height=34;
@@ -138,7 +218,7 @@ sealed partial class Shelf {
   LayoutInspector();if(finalPolishApplied)LayoutFinalPolish();searchView.PerformLayout();ResizeOnlineCards();
  }
  void LayoutSearchToolbar(int width){
-  int margin=17,gap=10,buttonW=92,sourceW=width<1000?112:130,categoryW=width<1000?100:112,resW=width<1000?112:126;
+  int margin=17,gap=10,buttonW=92,sourceW=width<1000?112:130,categoryW=136,resW=width<1000?112:126;
   int fixedWidth=margin*2+gap*4+buttonW+sourceW+categoryW+resW;
   int queryW=Math.Max(250,Math.Min(480,width-fixedWidth));
   int x=margin;

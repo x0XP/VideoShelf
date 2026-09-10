@@ -252,7 +252,7 @@ internal sealed class DownloadForm : Form
         progress.SetBounds(28, 137, 640, 18);
         state.SetBounds(28, 170, 640, 24);
         details.SetBounds(28, 198, 640, 24); details.AutoEllipsis = true;
-        openFolder.SetBounds(438, 244, 120, 34); openFolder.Enabled = Directory.Exists(destination);
+        openFolder.SetBounds(438, 244, 120, 34); openFolder.Enabled = previewOnly || Directory.Exists(destination);
         cancel.SetBounds(568, 244, 100, 34);
         Controls.AddRange(new Control[] { accentTop, accentLeft, heading, name, destinationLabel, progress, state, details, openFolder, cancel });
         if (!previewOnly) Shown += async (_, _) => await StartAsync();
@@ -268,6 +268,7 @@ internal sealed class DownloadForm : Form
         try
         {
             Directory.CreateDirectory(destination);
+            openFolder.Enabled = true;
             session = new TorrentSession(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "TorrentMetadata"), false);
             manager = await session.AddAsync(source, destination, false, cts.Token);
             state.Text = "Connecting to peers…";
@@ -354,17 +355,18 @@ internal sealed class StreamForm : Form
         var heading = Theme.Label(title, true); heading.SetBounds(22, 14, 900, 27); heading.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; heading.AutoEllipsis = true;
         var fileLabel = Theme.Label("Video"); fileLabel.SetBounds(22, 54, 42, 26);
         fileChoice.SetBounds(70, 52, 430, 31); fileChoice.Enabled = false;
-        status.SetBounds(520, 54, 500, 25); status.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; status.AutoEllipsis = true;
+        status.SetBounds(520, 54, 500, 25); status.Anchor = AnchorStyles.Top | AnchorStyles.Left; status.AutoEllipsis = true;
         top.Controls.AddRange(new Control[] { accentTop, accentLeft, heading, fileLabel, fileChoice, status });
 
         videoOverlay.Dock = DockStyle.Fill; videoOverlay.TextAlign = ContentAlignment.MiddleCenter; videoOverlay.BackColor = Color.Black; videoOverlay.ForeColor = Theme.Muted; videoOverlay.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
+        video.Visible = false;
         videoHost.Controls.Add(video); videoHost.Controls.Add(videoOverlay); videoOverlay.BringToFront();
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 68, BackColor = Theme.Background };
         playPause.SetBounds(22, 16, 90, 34); playPause.Enabled = false;
         stop.SetBounds(122, 16, 80, 34);
-        seek.SetBounds(220, 18, 650, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
-        timeLabel.SetBounds(880, 22, 150, 22); timeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right; timeLabel.TextAlign = ContentAlignment.MiddleRight;
+        seek.SetBounds(220, 18, 650, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+        timeLabel.SetBounds(880, 22, 150, 22); timeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left; timeLabel.TextAlign = ContentAlignment.MiddleRight; timeLabel.ForeColor = Color.FromArgb(190, 205, 220);
         bottom.Controls.AddRange(new Control[] { playPause, stop, seek, timeLabel });
         Controls.Add(videoHost); Controls.Add(bottom); Controls.Add(top);
 
@@ -384,22 +386,25 @@ internal sealed class StreamForm : Form
     {
         fileChoice.Items.Add("Episode 01.mkv  (1.4 GB)"); fileChoice.SelectedIndex = 0; fileChoice.Enabled = true;
         status.Text = "Streaming • 4.8 MB/s • temporary cache";
+        video.Visible = false; videoOverlay.Visible = true;
         videoOverlay.Text = "VIDEO PREVIEW\n\nTorrent pieces stream into VideoShelf's temporary cache as needed.";
         playPause.Enabled = true; playPause.Text = "Pause"; seek.Enabled = true; seek.Value = 318; timeLabel.Text = "08:12 / 25:49";
     }
 
     void LayoutPlayer()
     {
-        int available = Math.Max(180, ClientSize.Width - 590);
-        status.Width = available;
-        int seekWidth = Math.Max(180, ClientSize.Width - 410);
-        seek.Width = seekWidth;
+        status.Width = Math.Max(180, ClientSize.Width - status.Left - 22);
+        int timeWidth = 150;
+        int timeX = Math.Max(420, ClientSize.Width - 22 - timeWidth);
+        timeLabel.SetBounds(timeX, 22, timeWidth, 22);
+        seek.SetBounds(220, 18, Math.Max(180, timeX - 232), 30);
     }
 
     async Task StartAsync()
     {
         try
         {
+            video.Visible = false; videoOverlay.Visible = true;
             Directory.CreateDirectory(cache);
             session = new TorrentSession(Path.Combine(cache, "metadata"), true);
             manager = await session.AddAsync(source, cache, true, cts.Token);
@@ -426,6 +431,7 @@ internal sealed class StreamForm : Form
         catch (OperationCanceledException) { if (!closing) Close(); }
         catch (Exception ex)
         {
+            video.Visible = false; videoOverlay.Visible = true;
             videoOverlay.Text = "Unable to start this stream";
             status.Text = ex.Message;
             MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -444,7 +450,7 @@ internal sealed class StreamForm : Form
                 selected = file;
                 status.Text = "Buffering selected video…";
                 videoOverlay.Text = "Buffering selected video…";
-                videoOverlay.Visible = true;
+                video.Visible = false; videoOverlay.Visible = true;
                 playPause.Enabled = false; seek.Enabled = false;
 
                 try { player.Stop(); } catch { }
@@ -462,7 +468,7 @@ internal sealed class StreamForm : Form
                 bool started = player.Play(currentMedia);
                 if (!started) throw new InvalidOperationException("LibVLC could not start playback for the selected torrent file.");
                 playPause.Text = "Pause"; playPause.Enabled = true; seek.Enabled = true;
-                videoOverlay.Visible = false;
+                video.Visible = true; videoOverlay.Visible = false;
             }
             finally { playbackGate.Release(); }
         }
@@ -471,6 +477,7 @@ internal sealed class StreamForm : Form
         {
             if (closing) return;
             status.Text = "Playback failed • " + ex.Message;
+            video.Visible = false;
             videoOverlay.Text = "Playback failed\n\n" + ex.Message;
             videoOverlay.Visible = true;
             playPause.Text = "Play"; playPause.Enabled = player != null;
@@ -482,7 +489,7 @@ internal sealed class StreamForm : Form
         if (previewOnly) { playPause.Text = playPause.Text == "Pause" ? "Play" : "Pause"; return; }
         if (player == null || currentMedia == null) return;
         if (player.IsPlaying) { player.Pause(); playPause.Text = "Play"; }
-        else { player.Play(); playPause.Text = "Pause"; videoOverlay.Visible = false; }
+        else { video.Visible = true; player.Play(); playPause.Text = "Pause"; videoOverlay.Visible = false; }
     }
 
     void CommitSeek()
