@@ -31,8 +31,8 @@ jobs:
           $success = $false
           foreach ($source in $sources) {
             if (Test-Path $output) { Remove-Item $output -Force }
-            $args = @('--screenshot-online','re:zero','re zero',$source,$output,'3')
-            $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow
+            $argumentList = @('--screenshot-online','"re:zero"','"re zero"',$source,$output,'3')
+            $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -Wait -PassThru -NoNewWindow
             if ($process.ExitCode -eq 0 -and (Test-Path $output) -and (Get-Item $output).Length -gt 5000) {
               Write-Host "Captured live seeded torrent metadata from $source"
               $success = $true
