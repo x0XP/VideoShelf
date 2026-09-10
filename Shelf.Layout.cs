@@ -239,13 +239,15 @@ sealed partial class Shelf {
  internal bool IsSearchViewForCapture(Control control){return control==searchView;}
  void LayoutInspector(){
   int w=inspector.ClientSize.Width,h=inspector.ClientSize.Height,pad=13,inner=Math.Max(0,w-pad*2);
-  int imageHeight=h<660?160:h<760?185:205;
+  int imageHeight=h<620?90:h<680?120:h<760?185:205;
   inspectorImage.SetBounds(pad,14,inner,imageHeight);
   int titleTop=14+imageHeight+14;
   inspectorTitle.SetBounds(pad,titleTop,inner,64);
-  inspectorTags.SetBounds(pad,titleTop+74,inner,36);
-  int metaTop=titleTop+123;
-  int downloadY=Math.Max(metaTop+115,h-245),streamY=Math.Max(downloadY+72,h-173),bottomY=Math.Max(streamY+72,h-95);
+  inspectorTags.SetBounds(pad,titleTop+74,inner,58);
+  int metaTop=titleTop+144;
+  int bottomY=Math.Max(metaTop+255,h-54);
+  int streamY=bottomY-70,downloadY=streamY-70;
+  if(downloadY<metaTop+90){downloadY=metaTop+90;streamY=downloadY+70;bottomY=streamY+70;}
   inspectorMeta.SetBounds(pad,metaTop,inner,Math.Max(90,downloadY-metaTop-18));
   downloadVisual.SetBounds(pad,downloadY,inner,62);
   streamVisual.SetBounds(pad,streamY,inner,62);
