@@ -14,11 +14,12 @@ static class Program {
   if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){
    try{FolderNaming.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
   }
-  int videosArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-rezero-videos",StringComparison.OrdinalIgnoreCase));
-  if(videosArg>=0){
+  int libraryVideosArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-library-videos",StringComparison.OrdinalIgnoreCase));
+  if(libraryVideosArg>=0){
    try{
-    string output=(videosArg+1<args.Length&&args[videosArg+1].Length>0)?args[videosArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero-videos.png");
-    ScreenshotHarness.CaptureReZeroVideos(output);
+    if(libraryVideosArg+4>=args.Length)throw new ArgumentException("Usage: --screenshot-library-videos <root> <collection> <output.png> <expected-count>");
+    int expected;if(!int.TryParse(args[libraryVideosArg+4],out expected)||expected<1)throw new ArgumentException("Expected video count must be a positive integer.");
+    ScreenshotHarness.CaptureLibraryVideos(args[libraryVideosArg+1],args[libraryVideosArg+2],args[libraryVideosArg+3],expected);
     Environment.Exit(0);
    }catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
   }
