@@ -44,11 +44,12 @@ jobs:
           }
           Assert-BrandedIcon '.\VideoShelf.exe'
 
-      - name: Test folder aliases and built-in metadata parser
+      - name: Test folder aliases, metadata parser and search deadline
         shell: cmd
         run: VideoShelf.exe --self-test
 
       - name: Attempt real built-in Find online screenshot
+        id: live_builtin
         continue-on-error: true
         shell: powershell
         run: |
@@ -58,14 +59,22 @@ jobs:
           if (-not $process.WaitForExit(25000)) {
             $process.Kill()
             $process.WaitForExit()
+            "status=timeout" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             Write-Warning 'Built-in Find online screenshot exceeded 25 seconds.'
             exit 1
           }
           if ($process.ExitCode -ne 0 -or !(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
-            Write-Warning "Built-in Find online screenshot failed with exit code $($process.ExitCode)."
+            "status=unavailable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Warning "Built-in Find online screenshot failed with exit code $($process.ExitCode). Public metadata sources may be unavailable."
             exit 1
           }
+          "status=ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host 'Built-in Find online returned and rendered at least one valid seeded result.'
+
+      - name: Fail if built-in Find online hung
+        if: always() && steps.live_builtin.outputs.status == 'timeout'
+        shell: powershell
+        run: throw 'Built-in Find online exceeded its hard deadline. This is an application regression, not an optional public-source outage.'
 
       - name: Publish bundled download and streaming runtime
         shell: powershell
