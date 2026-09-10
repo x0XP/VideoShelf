@@ -11,7 +11,6 @@ sealed partial class Shelf {
   base.OnShown(e);
   ApplyExtendedVisuals();
   EnsureMockupActions();
-  ApplyFinalPolish();
   LayoutMockupShell();
  }
  protected override void OnResize(EventArgs e){
@@ -35,7 +34,7 @@ sealed partial class Shelf {
  }
  void LayoutMockupShell(){
   if(IsDisposed||ClientSize.Width<=0||ClientSize.Height<=0)return;
-  ApplyExtendedVisuals();EnsureMockupActions();ApplyFinalPolish();
+  ApplyExtendedVisuals();EnsureMockupActions();
 
   body.Dock=DockStyle.None;
   body.SetBounds(1,34,Math.Max(0,ClientSize.Width-2),Math.Max(0,ClientSize.Height-63));
@@ -44,11 +43,10 @@ sealed partial class Shelf {
 
   navHome.Top=116;navSearch.Top=170;navCollections.Top=224;navDownloads.Top=278;navStreaming.Top=332;navSettings.Top=386;
   LayoutSearchSurface();
-  LayoutFinalPolish();
   body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
  }
  void LayoutSearchSurface(){
-  ApplyExtendedVisuals();EnsureMockupActions();ApplyFinalPolish();
+  ApplyExtendedVisuals();EnsureMockupActions();
   Control results=searchView.Controls.Cast<Control>().FirstOrDefault(c=>c!=inspector&&c is Panel&&c.Controls.OfType<FlowLayoutPanel>().Any(f=>f==onlineCards));
   Control filters=searchView.Controls.Cast<Control>().FirstOrDefault(c=>c!=inspector&&c is Panel&&c.Contains(onlineQuery));
   int w=Math.Max(0,searchView.ClientSize.Width),h=Math.Max(0,searchView.ClientSize.Height),filterHeight=68,rightWidth=Math.Min(332,Math.Max(280,w/3)),rightMargin=12,gap=12;
@@ -63,7 +61,7 @@ sealed partial class Shelf {
   if(results!=null){results.Dock=DockStyle.None;results.SetBounds(0,filterHeight,contentWidth,contentHeight);results.Anchor=AnchorStyles.Top|AnchorStyles.Bottom|AnchorStyles.Left;results.SendToBack();}
 
   onlineCards.Padding=new Padding(22,0,10,16);LayoutExtendedVisuals();
-  LayoutInspector();LayoutFinalPolish();searchView.PerformLayout();ResizeOnlineCards();
+  LayoutInspector();searchView.PerformLayout();ResizeOnlineCards();
  }
  internal void LayoutSearchForCapture(int width,int height){
   searchView.Dock=DockStyle.None;searchView.SetBounds(0,0,width,height);searchView.Anchor=AnchorStyles.Top|AnchorStyles.Left;LayoutSearchSurface();searchView.PerformLayout();
@@ -91,7 +89,6 @@ sealed partial class Shelf {
   copyLink.SetBounds(pad,bottomY,half,47);
   viewFiles.SetBounds(pad+half+12,bottomY,Math.Max(90,inner-half-12),47);
   downloadVisual.Enabled=downloadOnline.Enabled;streamVisual.Enabled=streamOnline.Enabled;
-  LayoutFinalPolish();
  }
 }
 }
