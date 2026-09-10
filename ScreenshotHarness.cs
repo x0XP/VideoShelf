@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace VideoShelf {
 static class ScreenshotHarness {
@@ -17,10 +18,16 @@ static class ScreenshotHarness {
    Application.SetCompatibleTextRenderingDefault(false);
    using(var shelf=new Shelf()){
     shelf.Size=new Size(1120,780);
+    shelf.StartPosition=FormStartPosition.Manual;
+    shelf.Location=new Point(20,20);
+    shelf.Show();
+    Application.DoEvents();
     shelf.PrepareScreenshotLibrary(root);
-    shelf.CreateControl();
     shelf.PerformLayout();
     foreach(Control c in shelf.Controls)c.PerformLayout();
+    shelf.Refresh();
+    Application.DoEvents();
+    Thread.Sleep(250);
     Application.DoEvents();
     using(var bitmap=new Bitmap(shelf.ClientSize.Width,shelf.ClientSize.Height,PixelFormat.Format32bppArgb)){
      shelf.DrawToBitmap(bitmap,new Rectangle(Point.Empty,shelf.ClientSize));
@@ -28,6 +35,7 @@ static class ScreenshotHarness {
      if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);
      bitmap.Save(outputPath,ImageFormat.Png);
     }
+    shelf.Hide();
    }
    if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<1000)throw new Exception("Screenshot was not created correctly.");
   }finally{
@@ -39,6 +47,9 @@ static class ScreenshotHarness {
 sealed partial class Shelf {
  internal void PrepareScreenshotLibrary(string path){
   generation++;
+  portraitScan.Cancel();
+  onlineScan.Cancel();
+  thumbnailScan.Cancel();
   current=null;
   root=path;
   onlineMode=false;
