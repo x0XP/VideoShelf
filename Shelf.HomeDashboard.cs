@@ -147,7 +147,7 @@ sealed partial class Shelf {
  internal void ShowDashboardHome(){
   EnsureHomeDashboard();HideAllMainViews();section=ShellSection.Home;homeView.Visible=true;homeView.BringToFront();
   navHome.SetActive(true);navSearch.SetActive(false);navCollections.SetActive(false);navDownloads.SetActive(false);navStreaming.SetActive(false);navSettings.SetActive(false);
-  LayoutDashboardHome();RefreshDashboardHome();RefreshActivityBadges();SetStatus("Ready",root.Length==0?"Choose a library folder to begin.":people.Count+" collections");
+  LayoutDashboardHome();RefreshDashboardHome();RefreshActivityBadges();string count=people.Count+" collection"+(people.Count==1?"":"s");SetStatus("Ready",root.Length==0?"Choose a library folder to begin.":count);
  }
 
  internal void ShowCollectionsBrowser(){
