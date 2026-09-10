@@ -46,7 +46,6 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           $sources = @(
-            'https://bitsearch.to/api/v1/search?q={query}&sort=seeders&order=desc&limit=20',
             'https://nyaa.media/?page=rss&q={query}&c=1_2&f=0',
             'https://nyaa.mom/?page=rss&q={query}&c=1_2&f=0',
             'https://nyaa.si/?page=rss&q={query}&c=1_2&f=0',
@@ -74,37 +73,6 @@ jobs:
             Write-Warning 'Public metadata feeds were unreachable from this GitHub runner. No media fallback is used.'
             exit 1
           }
-      - name: Attempt live melody marks metadata screenshot
-        continue-on-error: true
-        shell: powershell
-        run: |
-          $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-melody-marks-online.png'
-          $sources = @(
-            'https://bitsearch.to/api/v1/search?q={query}&sort=seeders&order=desc&limit=20',
-            'https://www.torlock2.com/torznab/api?cat=6000',
-            'https://www.torlock2.com/torznab/api'
-          )
-          $success = $false
-          foreach ($source in $sources) {
-            if (Test-Path $output) { Remove-Item $output -Force }
-            $argumentList = @('--screenshot-online','"melody marks"','"melody marks"',('"' + $source + '"'),('"' + $output + '"'),'1')
-            $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
-            if (-not $process.WaitForExit(15000)) {
-              Write-Host "Metadata source unavailable/timed out: $source"
-              $process.Kill()
-              $process.WaitForExit()
-              continue
-            }
-            if ($process.ExitCode -eq 0 -and (Test-Path $output) -and (Get-Item $output).Length -gt 5000) {
-              Write-Host "Captured live seeded metadata for melody marks from $source"
-              $success = $true
-              break
-            }
-          }
-          if (-not $success) {
-            Write-Warning 'No live seeded melody marks metadata could be captured from the configured public test sources.'
-            exit 1
-          }
       - name: Verify required screenshot
         shell: powershell
         run: |
@@ -112,10 +80,8 @@ jobs:
           if (!(Test-Path $library)) { throw 'VideoShelf library screenshot was not created.' }
           if ((Get-Item $library).Length -lt 5000) { throw 'VideoShelf library screenshot is unexpectedly small.' }
           Copy-Item $library .\VideoShelf-rezero.png
-          $rezero = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
-          if ((Test-Path $rezero) -and (Get-Item $rezero).Length -gt 5000) { Copy-Item $rezero .\VideoShelf-rezero-online.png }
-          $melody = Join-Path $env:RUNNER_TEMP 'VideoShelf-melody-marks-online.png'
-          if ((Test-Path $melody) -and (Get-Item $melody).Length -gt 5000) { Copy-Item $melody .\VideoShelf-melody-marks-online.png }
+          $online = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
+          if ((Test-Path $online) -and (Get-Item $online).Length -gt 5000) { Copy-Item $online .\VideoShelf-rezero-online.png }
       - name: Upload complete Windows package
         uses: actions/upload-artifact@v4
         with:
