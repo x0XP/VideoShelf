@@ -74,6 +74,8 @@ sealed partial class Shelf {
   if(collectionView.Visible)return collectionView;
   return homeView;
  }
+ internal Control SidebarForCapture(){return sidebar;}
+ internal bool IsSearchViewForCapture(Control control){return control==searchView;}
  void LayoutInspector(){
   int w=inspector.ClientSize.Width,h=inspector.ClientSize.Height,pad=13,inner=Math.Max(0,w-pad*2);
   inspectorImage.SetBounds(pad,14,inner,205);
