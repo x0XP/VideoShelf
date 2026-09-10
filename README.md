@@ -2,14 +2,17 @@
 
 VideoShelf is a lightweight Windows desktop video library browser built with C# WinForms. It treats each immediate subfolder of a chosen library directory as a person/collection, shows a portrait card for that folder, finds local videos recursively, and can optionally search a user-configured Torznab-compatible source.
 
-## Current baseline — v1.4
+## Current baseline — v1.5
 
-- Folder-per-person library with recursive local video discovery.
+- Xdolf-inspired dark visual theme and owner-drawn tooltips.
+- Folder-per-person/collection library with recursive local video discovery.
 - **Add folder** directly inside the app, with Ctrl+N shortcut.
 - Exact display names are preserved even when Windows forbids a character in the physical folder name. For example, entering `re:zero` creates a safe disk folder but VideoShelf still displays and searches for `re:zero`.
 - Portrait lookup through DuckDuckGo Images, local cache, manual override, and browser fallback.
 - Local video playback through the Windows default player.
-- Optional Torznab-compatible online search with title, resolution, size, seeders, leechers, source, and publication date.
+- Optional online torrent-metadata search with title, resolution, size, seeders, leechers, source, publication date and artwork.
+- Online discovery is metadata-only. VideoShelf does **not** download the video while searching or displaying results.
+- **Stream locally** is an explicit user action that hands the selected torrent/magnet link to the registered local Windows handler. Any torrent data transfer happens in that local handler, not inside VideoShelf's discovery process.
 - Online results with `0` seeders are rejected and never displayed.
 - 2160p/4K, 1080p, 720p, and Other resolution filtering.
 - Search-engine-only result thumbnails through DuckDuckGo Images.
@@ -29,11 +32,15 @@ Choose a library folder, then use **+ Add folder** or press **Ctrl+N**. The coll
 
 Windows-invalid filename characters are translated only for the underlying directory. The original name is stored in `.videoshelf-name`, so a title such as `re:zero` remains exactly `re:zero` throughout the VideoShelf interface and online/image searches.
 
-## Online source
+## Online discovery and local streaming
 
-VideoShelf does not hard-code torrent/indexer sites. Configure a Torznab-compatible endpoint from software such as Jackett or Prowlarr from **Online source** inside the app. Provider configuration remains outside VideoShelf.
+VideoShelf does not hard-code torrent/indexer providers into the application. Configure a Torznab-compatible endpoint from software such as Jackett or Prowlarr, or another supported XML/RSS metadata search feed, from **Online source** inside the app.
 
-Returned links are opened through the operating system. VideoShelf itself does not download, move, rename, delete, or upload local media.
+Searching retrieves only the feed/indexer response needed to display the result list, plus small search-engine artwork thumbnails. It does not fetch the referenced video payload. Each seeded result is displayed with the information needed to choose between releases.
+
+When the user deliberately chooses **Stream locally** (or double-clicks/presses Enter on a result), VideoShelf passes that result's torrent/magnet link to the registered Windows handler. Whether the local handler streams sequentially or performs a conventional torrent download depends on that external application and its configuration.
+
+VideoShelf itself does not download, move, rename, delete, or upload local media during online discovery.
 
 ## Search-engine images
 
@@ -44,15 +51,17 @@ Portraits and online-result thumbnails use DuckDuckGo Images only. This is a pub
 - `VideoShelf.cs` — entry point, shared models, and portrait card control
 - `Shelf.Core.cs` — main window construction and shared UI helpers
 - `Shelf.Library.cs` — local library scanning, portraits, navigation, and folder creation
-- `Shelf.Online.cs` — online result/search/thumbnails UI
+- `Shelf.Online.cs` — online result/search/thumbnails UI and local stream handoff
 - `FolderManagement.cs` — safe folder creation, display-name aliases, and the `re:zero` self-test
 - `PortraitLookup.cs` — portrait search/cache
-- `OnlineSearch.cs` — Torznab search/settings
+- `OnlineSearch.cs` — metadata-source search/settings
 - `OnlineThumbnailLookup.cs` — search-engine result thumbnails
+- `XdolfTheme.cs` — Xdolf-inspired palette, controls and tooltip rendering
+- `ScreenshotHarness.cs` — deterministic UI proof/capture helpers
 - `AppDataPaths.cs` — VideoShelf data paths and one-time PeopleShelf migration
 - `Start.cmd` — minimal Windows compiler/launcher
 - `VideoShelf.csproj` — Visual Studio/MSBuild project
 
 ## Build validation
 
-The repository includes a Windows GitHub Actions workflow. Pushes and pull requests to `main` compile the same sources, run the folder-creation self-test using `re:zero`, and upload `VideoShelf.exe` as a workflow artifact.
+The repository includes a Windows GitHub Actions workflow. Pushes and pull requests to `main` compile the same sources, run the folder-creation self-test using `re:zero`, render the real library UI, and exercise metadata-only online discovery without intentionally downloading any video payload. The executable and successful screenshots are uploaded as workflow artifacts.
