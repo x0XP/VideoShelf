@@ -4,6 +4,15 @@ VideoShelf repository baseline — 10 September 2026
 - Added automatic migration of existing PeopleShelf local settings and image caches.
 - Added an MSBuild project and Windows GitHub Actions build validation.
 
+VideoShelf 1.4 — 10 September 2026
+--------------------------------------
+- Added an in-app **Add folder** control to the main library view.
+- Added Ctrl+N as a shortcut for creating a new collection.
+- New folders are created directly inside the currently selected VideoShelf library.
+- Display names can contain characters that Windows does not allow in folder names.
+- VideoShelf stores the exact display name in `.videoshelf-name` and uses a safe physical directory name underneath.
+- Added an automated Windows self-test using the requested `re:zero` example. The test verifies that the physical directory contains no colon while the VideoShelf display name remains exactly `re:zero`.
+
 VideoShelf 1.3 — 10 September 2026
 --------------------------------------
 - Added a 96x54 thumbnail beside each online torrent result.
