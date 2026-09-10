@@ -301,7 +301,6 @@ begin
   WizardForm.SelectTasksLabel.Font.Color := VSText;
   WizardForm.ReadyLabel.Font.Color := VSText;
   WizardForm.PreparingLabel.Font.Color := VSText;
-  WizardForm.InstallingLabel.Font.Color := VSText;
   WizardForm.FilenameLabel.Font.Color := VSMuted;
   WizardForm.StatusLabel.Font.Color := VSText;
 
