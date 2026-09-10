@@ -11,6 +11,7 @@ sealed partial class Shelf {
   base.OnHandleCreated(e);
   try{Icon=(Icon)AppBrand.Icon.Clone();}catch{}
   ApplyBrandIcon();
+  EnsureHomeDashboard();
  }
 
  void ApplyBrandIcon(){
