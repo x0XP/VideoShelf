@@ -43,6 +43,9 @@ jobs:
       - name: Render real re:zero collection screen
         shell: cmd
         run: VideoShelf.exe --screenshot-rezero-detail "%RUNNER_TEMP%\VideoShelf-rezero-detail.png"
+      - name: Render search-layout visual regression
+        shell: cmd
+        run: VideoShelf.exe --screenshot-mockup-search "%RUNNER_TEMP%\VideoShelf-search-layout.png"
       - name: Attempt live re:zero torrent metadata proof without media download
         continue-on-error: true
         shell: powershell
@@ -81,12 +84,16 @@ jobs:
         run: |
           $homeShot = Join-Path $env:RUNNER_TEMP 'VideoShelf-home.png'
           $detailShot = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-detail.png'
+          $searchShot = Join-Path $env:RUNNER_TEMP 'VideoShelf-search-layout.png'
           if (!(Test-Path $homeShot)) { throw 'VideoShelf Home screenshot was not created.' }
           if (!(Test-Path $detailShot)) { throw 'VideoShelf re:zero detail screenshot was not created.' }
+          if (!(Test-Path $searchShot)) { throw 'VideoShelf search-layout screenshot was not created.' }
           if ((Get-Item $homeShot).Length -lt 5000) { throw 'VideoShelf Home screenshot is unexpectedly small.' }
           if ((Get-Item $detailShot).Length -lt 5000) { throw 'VideoShelf re:zero detail screenshot is unexpectedly small.' }
+          if ((Get-Item $searchShot).Length -lt 12000) { throw 'VideoShelf search-layout screenshot is unexpectedly small.' }
           Copy-Item $homeShot .\VideoShelf-home.png
           Copy-Item $detailShot .\VideoShelf-rezero-detail.png
+          Copy-Item $searchShot .\VideoShelf-search-layout.png
           $online = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           if ((Test-Path $online) -and (Get-Item $online).Length -gt 5000) { Copy-Item $online .\VideoShelf-rezero-online.png }
       - name: Upload complete Windows package
