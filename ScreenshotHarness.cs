@@ -23,11 +23,12 @@ static class ScreenshotHarness {
     shelf.Show();
     Application.DoEvents();
     shelf.PrepareScreenshotLibrary(root);
+    if(!shelf.PullScreenshotPortrait("re:zero"))throw new Exception("A real thumbnail could not be pulled for re:zero; refusing to capture a placeholder screenshot.");
     shelf.PerformLayout();
     foreach(Control c in shelf.Controls)c.PerformLayout();
     shelf.Refresh();
     Application.DoEvents();
-    Thread.Sleep(250);
+    Thread.Sleep(300);
     Application.DoEvents();
     using(var bitmap=new Bitmap(shelf.ClientSize.Width,shelf.ClientSize.Height,PixelFormat.Format32bppArgb)){
      shelf.DrawToBitmap(bitmap,new Rectangle(Point.Empty,shelf.ClientSize));
@@ -37,7 +38,7 @@ static class ScreenshotHarness {
     }
     shelf.Hide();
    }
-   if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<1000)throw new Exception("Screenshot was not created correctly.");
+   if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<5000)throw new Exception("Screenshot was not created correctly or still appears to be a placeholder-only frame.");
   }finally{
    try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}
   }
@@ -71,6 +72,19 @@ sealed partial class Shelf {
   subtitle.Text=root;
   SetHeader(false);
   Render();
+ }
+
+ internal bool PullScreenshotPortrait(string name){
+  Person person=people.FirstOrDefault(p=>p.Name.Equals(name,StringComparison.OrdinalIgnoreCase));
+  if(person==null)return false;
+  PortraitLookup.Forget(name);
+  using(var result=PortraitLookup.Find(name,CancellationToken.None).GetAwaiter().GetResult()){
+   if(result.Photo==null)return false;
+   ApplyPortrait(person,result);
+  }
+  Render();
+  Application.DoEvents();
+  return person.Photo!=null;
  }
 }
 }
