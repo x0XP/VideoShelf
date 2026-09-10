@@ -14,9 +14,9 @@ sealed partial class Shelf {
   portraitScan.Cancel();portraitScan.Dispose();portraitScan=new System.Threading.CancellationTokenSource();onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;ResetOnlineThumbnailImages();fetchingPortraits=false;onlineSearching=false;
   int token=++generation; current=null;root=path;onlineMode=false;back.Visible=false;detail.Visible=false;cards.Visible=true;ClearSearch();SetSort(false);ClearCards();foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();people.Clear();onlineResults.Clear();onlineError="";onlineQueryFor=""; title.Text="";SetHeader(false);subtitle.Text=root;status.Text="Loading portraits…";
   int errors=0; List<Person> loaded;
-  try { loaded=await Task.Run(()=> {var list=new List<Person>();foreach(string dir in Directory.GetDirectories(path).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase)){ try{if((File.GetAttributes(dir)&FileAttributes.ReparsePoint)!=0)continue;}catch{errors++;continue;}var p=new Person{Path=dir,Name=Path.GetFileName(dir)};list.Add(p);}return list;}); }
+  try { loaded=await Task.Run(()=> {var list=new List<Person>();foreach(string dir in Directory.GetDirectories(path).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase)){ try{if((File.GetAttributes(dir)&FileAttributes.ReparsePoint)!=0)continue;}catch{errors++;continue;}var p=new Person{Path=dir,Name=FolderNaming.DisplayName(dir)};list.Add(p);}return list;}); }
   catch(Exception ex){if(token==generation&&!IsDisposed)status.Text="Cannot read folder: "+ex.Message;return;}
-  if(token!=generation||IsDisposed){foreach(var p in loaded)if(p.Photo!=null)p.Photo.Dispose();return;}people=loaded;skipped=errors;Render();try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllText(settings,root);}catch{} FetchPortraits(people.ToArray(),portraitScan.Token);
+  if(token!=generation||IsDisposed){foreach(var p in loaded)if(p.Photo!=null)p.Photo.Dispose();return;}people=loaded;skipped=errors;SetHeader(false);Render();try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllText(settings,root);}catch{} FetchPortraits(people.ToArray(),portraitScan.Token);
  }
  async void FetchPortraits(Person[] batch,System.Threading.CancellationToken ct){
   fetchingPortraits=true;if(current==null)Render();
@@ -46,6 +46,17 @@ sealed partial class Shelf {
    catch(OperationCanceledException){}catch(Exception ex){if(!IsDisposed)MessageBox.Show(this,ex.Message,"Portrait unavailable");}
   });
   menu.Items.Add("View image source",null,delegate{Uri uri;if(Uri.TryCreate(card.Person.PhotoSource,UriKind.Absolute,out uri)&&uri.Scheme=="https")Launch(uri.AbsoluteUri);else status.Text="This portrait has no web source (it may be a chosen local image).";});
+ }
+ void AddLibraryFolder(){
+  if(root.Length==0||!Directory.Exists(root)){status.Text="Choose a library folder before adding a collection.";return;}
+  using(var dialog=new AddFolderDialog())if(dialog.ShowDialog(this)==DialogResult.OK){
+   try{
+    string path=FolderNaming.CreateCollection(root,dialog.FolderName);
+    string display=FolderNaming.DisplayName(path);
+    status.Text="Added \""+display+"\".";
+    LoadRoot(root);
+   }catch(Exception ex){MessageBox.Show(this,"Could not create the folder.\n\n"+ex.Message,"VideoShelf",MessageBoxButtons.OK,MessageBoxIcon.Information);}
+  }
  }
  async void OpenPerson(Person p){
   onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;ResetOnlineThumbnailImages();onlineSearching=false;onlineResults.Clear();onlineError="";onlineQueryFor="";onlineQuery.Text=p.Name;
