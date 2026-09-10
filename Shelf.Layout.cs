@@ -12,10 +12,12 @@ sealed partial class Shelf {
   ApplyExtendedVisuals();
   EnsureMockupActions();
   LayoutMockupShell();
+  ApplyHomePolish();
+  LayoutHomePolish();
  }
  protected override void OnResize(EventArgs e){
   base.OnResize(e);
-  if(IsHandleCreated)LayoutMockupShell();
+  if(IsHandleCreated){LayoutMockupShell();if(homePolishApplied)LayoutHomePolish();}
  }
  void EnsureMockupActions(){
   if(downloadVisual!=null&&streamVisual!=null)return;
@@ -43,6 +45,7 @@ sealed partial class Shelf {
 
   navHome.Top=116;navSearch.Top=170;navCollections.Top=224;navDownloads.Top=278;navStreaming.Top=332;navSettings.Top=386;
   LayoutSearchSurface();
+  if(homePolishApplied)LayoutHomePolish();
   if(finalPolishApplied)LayoutFinalPolish();
   body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
  }
