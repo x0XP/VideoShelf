@@ -73,6 +73,7 @@ internal sealed class SeekBar : Control
     int value;
     bool dragging;
     public event EventHandler? ValueCommitted;
+    public bool IsDragging => dragging;
 
     public int Value
     {
@@ -165,6 +166,7 @@ internal sealed class DarkComboBox : ComboBox
 
 internal sealed class DarkListView : ListView
 {
+    readonly Font headerFont = new("Segoe UI", 8.5f, FontStyle.Bold);
     public DarkListView()
     {
         View = View.Details;
@@ -180,7 +182,7 @@ internal sealed class DarkListView : ListView
         {
             using (var b = new SolidBrush(Color.FromArgb(12, 24, 34))) e.Graphics.FillRectangle(b, e.Bounds);
             using (var p = new Pen(Color.FromArgb(39, 58, 73))) e.Graphics.DrawLine(p, e.Bounds.Right - 1, e.Bounds.Top, e.Bounds.Right - 1, e.Bounds.Bottom);
-            TextRenderer.DrawText(e.Graphics, e.Header.Text, new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            TextRenderer.DrawText(e.Graphics, e.Header.Text, headerFont,
                 new Rectangle(e.Bounds.X + 9, e.Bounds.Y, Math.Max(1, e.Bounds.Width - 12), e.Bounds.Height),
                 Color.FromArgb(184, 202, 219), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         };
@@ -194,5 +196,11 @@ internal sealed class DarkListView : ListView
                 selected ? Color.White : Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         };
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) headerFont.Dispose();
+        base.Dispose(disposing);
     }
 }
