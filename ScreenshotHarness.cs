@@ -21,12 +21,35 @@ static class ScreenshotHarness {
  public static void CaptureMockupSearch(string outputPath){Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareMockupSearch();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,12000);}
  static void Init(){Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
  static void PrepareWindow(Shelf shelf){
-  var host=new Panel{Size=new Size(1536,1024),BackColor=Color.Black};host.CreateControl();
-  shelf.MinimumSize=Size.Empty;shelf.MaximumSize=Size.Empty;shelf.TopLevel=false;shelf.StartPosition=FormStartPosition.Manual;shelf.Location=Point.Empty;shelf.Size=new Size(1536,1024);host.Controls.Add(shelf);shelf.Show();
-  shelf.SetBounds(0,0,1536,1024,BoundsSpecified.All);shelf.ClientSize=new Size(1536,1024);shelf.PerformLayout();Application.DoEvents();
+  var host=new Panel{Size=new Size(1100,820),BackColor=Color.Black};host.CreateControl();
+  shelf.MinimumSize=Size.Empty;shelf.MaximumSize=Size.Empty;shelf.TopLevel=false;shelf.StartPosition=FormStartPosition.Manual;shelf.Location=Point.Empty;shelf.Size=new Size(1044,788);host.Controls.Add(shelf);shelf.Show();shelf.PerformLayout();Application.DoEvents();
  }
  static void Settle(Shelf shelf){shelf.PerformLayout();foreach(Control c in shelf.Controls)c.PerformLayout();shelf.Refresh();Application.DoEvents();Thread.Sleep(350);Application.DoEvents();}
- static void SaveWindow(Shelf shelf,string outputPath){using(var bitmap=new Bitmap(1536,1024,PixelFormat.Format32bppArgb)){shelf.DrawToBitmap(bitmap,new Rectangle(0,0,1536,1024));string directory=Path.GetDirectoryName(outputPath);if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);bitmap.Save(outputPath,ImageFormat.Png);}Control host=shelf.Parent;shelf.Hide();if(host!=null){host.Controls.Remove(shelf);host.Dispose();}}
+ static void SaveWindow(Shelf shelf,string outputPath){
+  const int width=1536,height=1024,titleHeight=34,bodyHeight=960,statusHeight=30,sidebarWidth=244,mainWidth=1290;
+  Control title=shelf.Controls.Cast<Control>().FirstOrDefault(c=>c is Panel&&c.Dock==DockStyle.Top&&c.Height>=30&&c.Height<=36);
+  Control status=shelf.Controls.Cast<Control>().FirstOrDefault(c=>c is Panel&&c.Dock==DockStyle.Bottom);
+  Control view=shelf.ActiveViewForCapture();
+  if(title==null||status==null||view==null)throw new InvalidOperationException("VideoShelf capture surfaces were not available.");
+
+  title.Dock=DockStyle.None;title.SetBounds(0,0,width,titleHeight);title.Anchor=AnchorStyles.Top|AnchorStyles.Left;title.PerformLayout();
+  status.Dock=DockStyle.None;status.SetBounds(0,0,width,statusHeight);status.Anchor=AnchorStyles.Top|AnchorStyles.Left;status.PerformLayout();
+  shelf.sidebar.Dock=DockStyle.None;shelf.sidebar.SetBounds(0,0,sidebarWidth,bodyHeight);shelf.sidebar.Anchor=AnchorStyles.Top|AnchorStyles.Left;shelf.sidebar.PerformLayout();
+  view.Dock=DockStyle.None;view.SetBounds(0,0,mainWidth,bodyHeight);view.Anchor=AnchorStyles.Top|AnchorStyles.Left;
+  if(view==shelf.searchView)shelf.LayoutSearchForCapture(mainWidth,bodyHeight);else view.PerformLayout();
+  Application.DoEvents();
+
+  using(var bitmap=new Bitmap(width,height,PixelFormat.Format32bppArgb)){
+   using(Graphics g=Graphics.FromImage(bitmap)){g.Clear(XdolfTheme.Background);}
+   title.DrawToBitmap(bitmap,new Rectangle(0,0,width,titleHeight));
+   shelf.sidebar.DrawToBitmap(bitmap,new Rectangle(1,titleHeight,sidebarWidth,bodyHeight));
+   view.DrawToBitmap(bitmap,new Rectangle(245,titleHeight,mainWidth,bodyHeight));
+   status.DrawToBitmap(bitmap,new Rectangle(0,titleHeight+bodyHeight,width,statusHeight));
+   using(Graphics g=Graphics.FromImage(bitmap)){using(var p=new Pen(XdolfTheme.Outline))g.DrawRectangle(p,0,0,width-1,height-1);}
+   string directory=Path.GetDirectoryName(outputPath);if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);bitmap.Save(outputPath,ImageFormat.Png);
+  }
+  Control host=shelf.Parent;shelf.Hide();if(host!=null){host.Controls.Remove(shelf);host.Dispose();}
+ }
  static void Verify(string outputPath,long minBytes){if(!File.Exists(outputPath)||new FileInfo(outputPath).Length<minBytes)throw new Exception("Screenshot was not created correctly.");}
 }
 
