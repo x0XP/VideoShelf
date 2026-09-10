@@ -17,12 +17,14 @@ sealed partial class Shelf {
   suppress=true;sourceFilter.SelectedIndex=0;categoryFilter.SelectedIndex=0;resolution.SelectedIndex=0;suppress=false;
   onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;var ct=onlineScan.Token;Person target=current;onlineSearching=true;onlineError="";onlineQueryFor=query;if(showStatus){ShowSection(searchView,ShellSection.Search);RenderOnline();}
   try{
-   List<OnlineResult> found;
+   List<OnlineResult> found=null;bool useBuiltIn=!onlineSettings.Configured;
    if(onlineSettings.Configured){
-    try{found=await TorznabSearch.Search(query,onlineSettings,ct);if(found==null||found.Count==0)found=await BuiltInOnlineSearch.Search(query,ct);}
+    try{found=await TorznabSearch.Search(query,onlineSettings,ct);useBuiltIn=found==null||found.Count==0;}
     catch(OperationCanceledException){throw;}
-    catch{found=await BuiltInOnlineSearch.Search(query,ct);}
-   }else found=await BuiltInOnlineSearch.Search(query,ct);
+    catch{useBuiltIn=true;}
+   }
+   if(useBuiltIn)found=await BuiltInOnlineSearch.Search(query,ct);
+   if(found==null)found=new List<OnlineResult>();
    if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults=found.Where(r=>r.Seeders>0).ToList();selectedOnline=onlineResults.FirstOrDefault();RefreshSourceFilter();
   }
   catch(OperationCanceledException){return;}catch(Exception ex){if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults.Clear();selectedOnline=null;onlineError=ex.Message;}
