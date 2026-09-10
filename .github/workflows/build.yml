@@ -26,6 +26,8 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-online.png'
           $sources = @(
+            'https://nyaa.media/?page=rss&q={query}&c=1_2&f=0',
+            'https://nyaa.mom/?page=rss&q={query}&c=1_2&f=0',
             'https://nyaa.si/?page=rss&q={query}&c=1_2&f=0',
             'https://stremthrufortheweebs.midnightignite.me/v0/torznab/api',
             'https://www.torlock.com/torznab/api'
