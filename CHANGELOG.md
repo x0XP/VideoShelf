@@ -4,6 +4,25 @@ VideoShelf repository baseline — 10 September 2026
 - Added automatic migration of existing PeopleShelf local settings and image caches.
 - Added an MSBuild project and Windows GitHub Actions build validation.
 
+VideoShelf 1.7 — 10 September 2026
+--------------------------------------
+- Rebuilt the application shell around the approved Xdolf-inspired VideoShelf mock-up rather than the earlier stock WinForms layout.
+- Added the permanent left navigation rail for Home, Search, Collections, Downloads, Streaming and Settings, plus the custom VideoShelf title/status bars.
+- Removed the slogans/quotes from the title and lower-left areas.
+- Reworked Home into collection artwork cards with the Xdolf-style blue/red accent treatment and a matching dark sort control.
+- Reworked online discovery into stacked torrent result cards with artwork, tags, resolution, size/date, seeders, leechers and source information.
+- Added a persistent selected-result inspector with wrapped title, aligned metadata, artwork, tags and the large Download locally / Stream locally actions from the mock-up.
+- Replaced visible native white filter controls with custom dark VideoShelf filters and matching popup menus.
+- Dark-themed the search-results scrollbar and local-video ListView scrollbar so Windows-native white strips no longer break the interface.
+- Owner-drew the complete local-video header and dynamically fits the final SUBFOLDER column to consume otherwise-unused header space without using the resize-feedback approach that previously caused instability.
+- Added a mock-up-style framed search input with search glyph.
+- Added Download/Streaming sidebar activity badges and preserved the existing transfer activity views.
+- Added **View files** for seeded torrent results. It resolves torrent metadata only and displays the torrent manifest without intentionally starting media payload transfer.
+- Added a runtime self-test that verifies the bundled MonoTorrent version exposes metadata-only startup support required by View files.
+- Preserved the hard zero-seeder invariant: results reporting zero seeders are rejected by parsing and filtered again before rendering.
+- Expanded GitHub Actions visual validation to render the actual compiled WinForms controls for Home, collection and search states, while separately attempting real re:zero artwork and live seeded metadata proofs without substituting fake media data.
+- Final validation passes the Windows build, folder alias test, bundled MonoTorrent/LibVLC runtime test, required UI captures, live seeded metadata proof, package upload and screenshot upload.
+
 VideoShelf 1.6 — 10 September 2026
 --------------------------------------
 - Added a distinct **Download locally** action to seeded online results.
