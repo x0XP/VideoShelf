@@ -10,12 +10,15 @@ using System.Threading.Tasks;
 namespace VideoShelf {
 sealed partial class Shelf {
  void ConfigureOnline(){
-  onlineSettings=OnlineSettings.Load();using(var d=new OnlineSourceDialog(onlineSettings))if(d.ShowDialog(this)==DialogResult.OK&&d.Value!=null){onlineSettings=d.Value;try{onlineSettings.Save();}catch(Exception ex){MessageBox.Show(this,"Could not save online source settings.\n\n"+ex.Message,"VideoShelf");return;}onlineResults.Clear();selectedOnline=null;onlineQueryFor="";onlineError="";if(section==ShellSection.Search&&onlineSettings.Configured)SearchOnline(onlineQuery.Text,true);else if(section==ShellSection.Search)RenderOnline();if(section==ShellSection.Settings)ShowSettings();}
+  onlineSettings=OnlineSettings.Load();using(var d=new OnlineSourceDialog(onlineSettings))if(d.ShowDialog(this)==DialogResult.OK&&d.Value!=null){onlineSettings=d.Value;try{onlineSettings.Save();}catch(Exception ex){MessageBox.Show(this,"Could not save online source settings.\n\n"+ex.Message,"VideoShelf");return;}onlineResults.Clear();selectedOnline=null;onlineQueryFor="";onlineError="";if(section==ShellSection.Search)SearchOnline(onlineQuery.Text,true);if(section==ShellSection.Settings)ShowSettings();RefreshDashboardHome();}
  }
  async void SearchOnline(string query,bool showStatus){
-  onlineSettings=OnlineSettings.Load();query=(query??"").Trim();if(query.Length==0){onlineError="Enter a search query.";if(showStatus){ShowSearch();RenderOnline();}return;}if(!onlineSettings.Configured){onlineError="Configure an online metadata source first.";if(showStatus){ShowSearch();RenderOnline();}return;}
+  onlineSettings=OnlineSettings.Load();query=(query??"").Trim();if(query.Length==0){onlineError="Enter a search query.";if(showStatus){ShowSearch();RenderOnline();}return;}
   onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;var ct=onlineScan.Token;Person target=current;onlineSearching=true;onlineError="";onlineQueryFor=query;if(showStatus){ShowSection(searchView,ShellSection.Search);RenderOnline();}
-  try{var found=await TorznabSearch.Search(query,onlineSettings,ct);if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults=found.Where(r=>r.Seeders>0).ToList();selectedOnline=onlineResults.FirstOrDefault();RefreshSourceFilter();}
+  try{
+   List<OnlineResult> found=onlineSettings.Configured?await TorznabSearch.Search(query,onlineSettings,ct):await BuiltInOnlineSearch.Search(query,ct);
+   if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults=found.Where(r=>r.Seeders>0).ToList();selectedOnline=onlineResults.FirstOrDefault();RefreshSourceFilter();
+  }
   catch(OperationCanceledException){return;}catch(Exception ex){if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults.Clear();selectedOnline=null;onlineError=ex.Message;}
   finally{if(!ct.IsCancellationRequested&&!IsDisposed&&target==current){onlineSearching=false;if(section==ShellSection.Search)RenderOnline();else if(current!=null)RenderLocal();}}
  }
@@ -28,8 +31,9 @@ sealed partial class Shelf {
   if(selectedOnline!=null&&!rows.Contains(selectedOnline))selectedOnline=rows.FirstOrDefault();if(selectedOnline==null&&rows.Count>0)selectedOnline=rows[0];
   onlineCards.SuspendLayout();while(onlineCards.Controls.Count>0)onlineCards.Controls[0].Dispose();foreach(var r in rows){var card=new OnlineResultCard(r);card.Selected=r==selectedOnline;card.ResultSelected+=delegate{SelectOnline(card.Result,card);};card.ResultActivated+=delegate{SelectOnline(card.Result,card);StreamOnline();};tips.SetToolTip(card,"Metadata only\n"+r.Title+"\n"+r.Seeders+" seeders • "+r.Leechers+" leechers");onlineCards.Controls.Add(card);}onlineCards.ResumeLayout();ResizeOnlineCards();RenderInspector();
   string q=onlineQueryFor.Length>0?onlineQueryFor:onlineQuery.Text.Trim();searchHeading.Text=q.Length==0?"Search":"Search results for “"+q+"”";
-  if(onlineSearching){searchCount.Text="Searching metadata sources…";SetStatus("Searching…","No media is being downloaded.");}
+  if(onlineSearching){searchCount.Text=onlineSettings.Configured?"Searching your metadata source…":"Searching built-in metadata sources…";SetStatus("Searching…","No media is being downloaded.");}
   else if(onlineError.Length>0){searchCount.Text="Search unavailable";SetStatus("Search unavailable",onlineError);}
+  else if(rows.Count==0){searchCount.Text="No seeded results found";SetStatus("No seeded results","Try a broader search or change the category/resolution filters.");}
   else{searchCount.Text="Found "+rows.Count+" result"+(rows.Count==1?"":"s")+" (metadata only)";SetStatus("Ready","Results are metadata only. No files are downloaded.");}
   if(!onlineSearching&&!thumbnailsLoading&&!thumbnailsPaused&&rows.Count>0)StartThumbnailLoading(rows);
  }
@@ -49,8 +53,8 @@ sealed partial class Shelf {
   catch(OperationCanceledException){}finally{if(!ct.IsCancellationRequested&&!IsDisposed&&target==current){thumbnailsLoading=false;if(section==ShellSection.Search)SetStatus("Ready",thumbnailsPaused?"Thumbnail lookup paused by the image source.":"Results are metadata only. No files are downloaded.");}}
  }
  static string DisplaySource(string s){if(string.IsNullOrWhiteSpace(s))return "Indexer";Uri u;if(Uri.TryCreate(s,UriKind.Absolute,out u))return u.Host;return s;}
- void StreamOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a seeded result first.");return;}if(TransferBridge.Stream(this,selectedOnline)){RefreshActivityBadges();SetStatus("Streaming opened","Torrent data starts only after this explicit action.");}}
- void DownloadOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a seeded result first.");return;}string suggested=current!=null?current.Path:root;if(TransferBridge.Download(this,selectedOnline,suggested)){RefreshActivityBadges();SetStatus("Download opened","Choose the destination in the transfer window.");}}
+ void StreamOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a seeded result first.");return;}if(TransferBridge.Stream(this,selectedOnline)){RefreshActivityBadges();RefreshDashboardHome();SetStatus("Streaming opened","Torrent data starts only after this explicit action.");}}
+ void DownloadOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a seeded result first.");return;}string suggested=current!=null?current.Path:root;if(TransferBridge.Download(this,selectedOnline,suggested)){RefreshActivityBadges();RefreshDashboardHome();SetStatus("Download opened","Choose the destination in the transfer window.");}}
  void CopyOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a result first.");return;}try{Clipboard.SetText(selectedOnline.Link);SetStatus("Copied link","No media was downloaded.");}catch(Exception ex){SetStatus("Copy failed",ex.Message);}}
  void ViewOnlineFiles(){if(selectedOnline==null){SetStatus("Select a result","Choose a result first.");return;}if(TransferBridge.ViewFiles(this,selectedOnline))SetStatus("Torrent files","Retrieving torrent metadata only.");}
 }
