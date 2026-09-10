@@ -4,6 +4,17 @@ VideoShelf repository baseline — 10 September 2026
 - Added automatic migration of existing PeopleShelf local settings and image caches.
 - Added an MSBuild project and Windows GitHub Actions build validation.
 
+VideoShelf 1.5 — 10 September 2026
+--------------------------------------
+- Reworked the VideoShelf visual language to match the rebuilt Xdolf click-GUI.
+- Added a shared Xdolf-inspired palette based on near-black `#0A0C10`, outline `#3B414B`, blue `#329CFF`, red `#FF2020`, compact light text and muted secondary text.
+- Replaced stock Windows ToolTip rendering with an owner-drawn information card inspired directly by Xdolf's `ClickGuiTooltip`.
+- Tooltips now use a dark body, subtle shadow, hard outline, red left accent, blue top accent, compact heading, blue INFO marker, divider and muted body copy.
+- Routed online-result hover details through the custom tooltip renderer instead of the native ListView tooltip.
+- Restyled collection cards with Xdolf-like hard outlines, blue top edges, red left edges and darker hover states.
+- Restyled buttons, search fields, list surfaces and the Add folder dialog to use the same visual system.
+- Preserved the existing VideoShelf layout and desktop interaction model rather than copying Minecraft-specific panel behavior literally.
+
 VideoShelf 1.4 — 10 September 2026
 --------------------------------------
 - Added an in-app **Add folder** control to the main library view.
