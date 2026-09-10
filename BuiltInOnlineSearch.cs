@@ -37,7 +37,13 @@ static class BuiltInOnlineSearch {
    timeout.CancelAfter(TimeSpan.FromSeconds(10));
    try{
     var found=await TorznabSearch.Search(query,new OnlineSettings{Url=source,ApiKey="",AutoSearch=true},timeout.Token);
-    if(found!=null)response.Results=found.Where(r=>r!=null&&r.Seeders>0).ToList();
+    if(found!=null){
+     Uri uri;string probe=source.Replace("{query}","search");string fallback=Uri.TryCreate(probe,UriKind.Absolute,out uri)?uri.Host:"Built-in";
+     foreach(var row in found.Where(r=>r!=null&&r.Seeders>0)){
+      if(string.IsNullOrWhiteSpace(row.Source)||row.Source.Equals("Indexer",StringComparison.OrdinalIgnoreCase))row.Source=fallback;
+      response.Results.Add(row);
+     }
+    }
    }catch(OperationCanceledException){if(parent.IsCancellationRequested)throw;response.Failed=true;}
    catch{response.Failed=true;}
   }
