@@ -41,7 +41,11 @@ sealed partial class Shelf {
   body.SendToBack();
 
   navHome.Top=116;navSearch.Top=170;navCollections.Top=224;navDownloads.Top=278;navStreaming.Top=332;navSettings.Top=386;
-
+  LayoutSearchSurface();
+  body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
+ }
+ void LayoutSearchSurface(){
+  EnsureMockupActions();
   Control results=searchView.Controls.Cast<Control>().FirstOrDefault(c=>c!=inspector&&c is Panel&&c.Controls.OfType<FlowLayoutPanel>().Any(f=>f==onlineCards));
   Control filters=searchView.Controls.Cast<Control>().FirstOrDefault(c=>c!=inspector&&c is Panel&&c.Controls.Contains(onlineQuery));
   int w=Math.Max(0,searchView.ClientSize.Width),h=Math.Max(0,searchView.ClientSize.Height),filterHeight=68,rightWidth=Math.Min(332,Math.Max(280,w/3)),rightMargin=12,gap=12;
@@ -57,8 +61,18 @@ sealed partial class Shelf {
 
   onlineCards.Padding=new Padding(22,0,10,16);
   LayoutInspector();
-  body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
-  ResizeOnlineCards();
+  searchView.PerformLayout();ResizeOnlineCards();
+ }
+ internal void LayoutSearchForCapture(int width,int height){
+  searchView.Dock=DockStyle.None;searchView.SetBounds(0,0,width,height);searchView.Anchor=AnchorStyles.Top|AnchorStyles.Left;LayoutSearchSurface();searchView.PerformLayout();
+ }
+ internal Control ActiveViewForCapture(){
+  if(section==ShellSection.Search)return searchView;
+  if(section==ShellSection.Downloads)return downloadsView;
+  if(section==ShellSection.Streaming)return streamingView;
+  if(section==ShellSection.Settings)return settingsView;
+  if(collectionView.Visible)return collectionView;
+  return homeView;
  }
  void LayoutInspector(){
   int w=inspector.ClientSize.Width,h=inspector.ClientSize.Height,pad=13,inner=Math.Max(0,w-pad*2);
