@@ -29,6 +29,7 @@
     <Compile Include="AppDataPaths.cs" />
     <Compile Include="FolderManagement.cs" />
     <Compile Include="VideoShelf.cs" />
+    <Compile Include="ScreenshotHarness.cs" />
     <Compile Include="Shelf.Core.cs" />
     <Compile Include="Shelf.Library.cs" />
     <Compile Include="Shelf.Online.cs" />
