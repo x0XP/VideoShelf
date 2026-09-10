@@ -22,6 +22,12 @@ internal static class Program
                 TransferRuntime.SelfTest();
                 return;
             }
+            if (args.Length >= 1 && args[0].Equals("--screenshot-ui", StringComparison.OrdinalIgnoreCase))
+            {
+                string output = args.Length > 1 ? args[1] : Path.Combine(Environment.CurrentDirectory, "TransferHost-ui");
+                TransferUiCapture.Capture(output);
+                return;
+            }
 
             var command = args.FirstOrDefault()?.ToLowerInvariant();
             var values = Arguments.Parse(args.Skip(1).ToArray());
@@ -41,7 +47,7 @@ internal static class Program
                 return;
             }
 
-            throw new ArgumentException("Use download --source <magnet-or-torrent-url> --destination <folder> --title <title>, stream --source <magnet-or-torrent-url> --title <title>, or --self-test.");
+            throw new ArgumentException("Use download --source <magnet-or-torrent-url> --destination <folder> --title <title>, stream --source <magnet-or-torrent-url> --title <title>, files --source <magnet-or-torrent-url> --title <title>, --screenshot-ui <folder>, or --self-test.");
         }
         catch (Exception ex)
         {
@@ -73,8 +79,8 @@ internal sealed class Arguments
 internal static class Theme
 {
     public static readonly Color Background = Color.FromArgb(7, 9, 12);
-    public static readonly Color Panel = Color.FromArgb(10, 12, 16);
-    public static readonly Color Raised = Color.FromArgb(20, 23, 29);
+    public static readonly Color Panel = Color.FromArgb(8, 17, 25);
+    public static readonly Color Raised = Color.FromArgb(14, 27, 38);
     public static readonly Color Outline = Color.FromArgb(59, 65, 75);
     public static readonly Color Blue = Color.FromArgb(50, 156, 255);
     public static readonly Color Red = Color.FromArgb(255, 32, 32);
@@ -90,14 +96,17 @@ internal static class Theme
         form.StartPosition = FormStartPosition.CenterScreen;
         form.ClientSize = size;
         form.MinimumSize = size;
+        NativeTheme.Apply(form);
     }
 
     public static Button Button(string text, int width = 130)
     {
-        var b = new Button { Text = text, Width = width, Height = 34, FlatStyle = FlatStyle.Flat, BackColor = Raised, ForeColor = Text, Cursor = Cursors.Hand };
+        var b = new Button { Text = text, Width = width, Height = 34, FlatStyle = FlatStyle.Flat, BackColor = Raised, ForeColor = Text, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 9.2f) };
         b.FlatAppearance.BorderColor = Outline;
         b.FlatAppearance.BorderSize = 1;
-        b.FlatAppearance.MouseOverBackColor = Color.FromArgb(29, 34, 42);
+        b.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 48, 72);
+        b.FlatAppearance.MouseDownBackColor = Color.FromArgb(16, 39, 59);
+        NativeTheme.Apply(b);
         return b;
     }
 
@@ -135,7 +144,7 @@ internal sealed class TorrentSession : IAsyncDisposable
     static HttpClient CreateHttp()
     {
         var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(30) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.6");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.7");
         return client;
     }
 
@@ -211,7 +220,8 @@ internal sealed class TorrentSession : IAsyncDisposable
         {
             using var engine = new ClientEngine(new EngineSettingsBuilder { HttpStreamingPrefix = $"http://127.0.0.1:{FindFreePort()}/" }.ToSettings());
             Core.Initialize();
-            using var vlc = new LibVLC("--no-video-title-show");
+            using var vlc = new LibVLC("--no-video-title-show", "--network-caching=1800");
+            using var player = new MediaPlayer(vlc);
         }
         finally { try { Directory.Delete(root, true); } catch { } }
     }
@@ -219,34 +229,36 @@ internal sealed class TorrentSession : IAsyncDisposable
 
 internal sealed class DownloadForm : Form
 {
-    readonly string source, destination, displayTitle;
+    readonly string source, destination;
     readonly Label state = Theme.Label("Preparing torrent metadata…"), details = Theme.Label("No media is transferred until this explicit download action."), destinationLabel = Theme.Label("");
-    readonly ProgressBar progress = new() { Minimum = 0, Maximum = 1000, Style = ProgressBarStyle.Continuous };
+    readonly AccentProgressBar progress = new();
     readonly Button cancel = Theme.Button("Cancel", 105), openFolder = Theme.Button("Open folder", 120);
     readonly System.Windows.Forms.Timer uiTimer = new() { Interval = 500 };
     readonly CancellationTokenSource cts = new();
+    readonly bool previewOnly;
     TorrentSession? session;
     TorrentManager? manager;
     bool complete, closing;
 
-    public DownloadForm(string source, string destination, string title)
+    public DownloadForm(string source, string destination, string title, bool previewOnly = false)
     {
-        this.source = source; this.destination = destination; displayTitle = title;
+        this.source = source; this.destination = destination; this.previewOnly = previewOnly;
         Theme.Form(this, "Download locally", new Size(700, 300));
         var accentTop = new Panel { Dock = DockStyle.Top, Height = 2, BackColor = Theme.Blue };
         var accentLeft = new Panel { Dock = DockStyle.Left, Width = 3, BackColor = Theme.Red };
         var heading = Theme.Label("DOWNLOAD LOCALLY", true); heading.SetBounds(28, 26, 620, 28);
-        var name = Theme.Label(title, true); name.SetBounds(28, 62, 640, 28);
+        var name = Theme.Label(title, true); name.SetBounds(28, 62, 640, 28); name.AutoEllipsis = true;
         destinationLabel.Text = destination; destinationLabel.SetBounds(28, 96, 640, 24); destinationLabel.AutoEllipsis = true;
         progress.SetBounds(28, 137, 640, 18);
         state.SetBounds(28, 170, 640, 24);
-        details.SetBounds(28, 198, 640, 24);
+        details.SetBounds(28, 198, 640, 24); details.AutoEllipsis = true;
         openFolder.SetBounds(438, 244, 120, 34); openFolder.Enabled = Directory.Exists(destination);
         cancel.SetBounds(568, 244, 100, 34);
         Controls.AddRange(new Control[] { accentTop, accentLeft, heading, name, destinationLabel, progress, state, details, openFolder, cancel });
-        Shown += async (_, _) => await StartAsync();
+        if (!previewOnly) Shown += async (_, _) => await StartAsync();
+        else { progress.Value = 420; state.Text = "Downloading  •  42.0%"; details.Text = "5.8 MB/s down  •  3,612 MB received"; cancel.Text = "Cancel"; }
         FormClosing += OnClosing;
-        cancel.Click += (_, _) => { if (complete) Close(); else { cts.Cancel(); cancel.Enabled = false; state.Text = "Stopping…"; } };
+        cancel.Click += (_, _) => { if (complete || previewOnly) Close(); else { cts.Cancel(); cancel.Enabled = false; state.Text = "Stopping…"; } };
         openFolder.Click += (_, _) => { try { Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true }); } catch { } };
         uiTimer.Tick += (_, _) => RefreshStats();
     }
@@ -284,8 +296,7 @@ internal sealed class DownloadForm : Form
     void RefreshStats()
     {
         if (manager == null) return;
-        int value = Math.Max(0, Math.Min(1000, (int)Math.Round(manager.Progress * 10)));
-        progress.Value = value;
+        progress.Value = Math.Max(0, Math.Min(1000, (int)Math.Round(manager.Progress * 10)));
         state.Text = $"{manager.State}  •  {manager.Progress:0.0}%";
         details.Text = $"{FormatRate(manager.Monitor.DownloadRate)} down  •  {manager.Monitor.DataBytesReceived / (1024d * 1024d):0.0} MB received";
     }
@@ -308,50 +319,81 @@ internal sealed class DownloadForm : Form
 internal sealed class StreamForm : Form
 {
     static readonly HashSet<string> Playable = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".vob" };
-    readonly string source, displayTitle;
+    readonly string source;
+    readonly Panel videoHost = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
     readonly VideoView video = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
-    readonly ComboBox fileChoice = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 390, BackColor = Theme.Raised, ForeColor = Theme.Text };
-    readonly Label status = Theme.Label("Preparing torrent metadata…");
-    readonly Button playPause = Theme.Button("Pause", 90), stop = Theme.Button("Stop", 80);
-    readonly TrackBar seek = new() { Minimum = 0, Maximum = 1000, TickStyle = TickStyle.None, Width = 280 };
-    readonly System.Windows.Forms.Timer uiTimer = new() { Interval = 500 };
+    readonly Label videoOverlay = Theme.Label("Preparing stream…", true);
+    readonly DarkComboBox fileChoice = new() { Width = 390 };
+    readonly Label status = Theme.Label("Preparing torrent metadata…"), timeLabel = Theme.Label("00:00 / 00:00");
+    readonly Button playPause = Theme.Button("Play", 90), stop = Theme.Button("Stop", 80);
+    readonly SeekBar seek = new() { Width = 280, Enabled = false };
+    readonly System.Windows.Forms.Timer uiTimer = new() { Interval = 350 };
     readonly CancellationTokenSource cts = new();
+    readonly SemaphoreSlim playbackGate = new(1, 1);
     readonly string cache;
+    readonly bool previewOnly;
     TorrentSession? session;
     TorrentManager? manager;
     LibVLC? vlc;
     MediaPlayer? player;
+    Media? currentMedia;
+    object? currentHttpStream;
     List<ITorrentManagerFile> playable = new();
     ITorrentManagerFile? selected;
-    bool userSeeking, closing;
+    int playbackRevision;
+    bool closing;
 
-    public StreamForm(string source, string title)
+    public StreamForm(string source, string title, bool previewOnly = false)
     {
-        this.source = source; displayTitle = title;
+        this.source = source; this.previewOnly = previewOnly;
         cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "StreamingCache", Guid.NewGuid().ToString("N"));
         Theme.Form(this, "Stream locally", new Size(1060, 720)); MinimumSize = new Size(800, 560);
-        var top = new Panel { Dock = DockStyle.Top, Height = 92, BackColor = Theme.Background };
+        var top = new Panel { Dock = DockStyle.Top, Height = 96, BackColor = Theme.Background };
         var accentTop = new Panel { Dock = DockStyle.Top, Height = 2, BackColor = Theme.Blue };
         var accentLeft = new Panel { Dock = DockStyle.Left, Width = 3, BackColor = Theme.Red };
-        var heading = Theme.Label(title, true); heading.SetBounds(22, 14, 900, 27); heading.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        var fileLabel = Theme.Label("Video"); fileLabel.SetBounds(22, 51, 42, 26);
-        fileChoice.SetBounds(70, 50, 430, 28);
-        status.SetBounds(520, 51, 500, 25); status.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        var heading = Theme.Label(title, true); heading.SetBounds(22, 14, 900, 27); heading.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; heading.AutoEllipsis = true;
+        var fileLabel = Theme.Label("Video"); fileLabel.SetBounds(22, 54, 42, 26);
+        fileChoice.SetBounds(70, 52, 430, 31); fileChoice.Enabled = false;
+        status.SetBounds(520, 54, 500, 25); status.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; status.AutoEllipsis = true;
         top.Controls.AddRange(new Control[] { accentTop, accentLeft, heading, fileLabel, fileChoice, status });
 
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 58, BackColor = Theme.Background };
-        playPause.SetBounds(22, 12, 90, 34); stop.SetBounds(122, 12, 80, 34); seek.SetBounds(220, 16, 790, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
-        bottom.Controls.AddRange(new Control[] { playPause, stop, seek });
-        Controls.Add(video); Controls.Add(bottom); Controls.Add(top);
+        videoOverlay.Dock = DockStyle.Fill; videoOverlay.TextAlign = ContentAlignment.MiddleCenter; videoOverlay.BackColor = Color.Black; videoOverlay.ForeColor = Theme.Muted; videoOverlay.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
+        videoHost.Controls.Add(video); videoHost.Controls.Add(videoOverlay); videoOverlay.BringToFront();
 
-        Shown += async (_, _) => await StartAsync();
+        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 68, BackColor = Theme.Background };
+        playPause.SetBounds(22, 16, 90, 34); playPause.Enabled = false;
+        stop.SetBounds(122, 16, 80, 34);
+        seek.SetBounds(220, 18, 650, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+        timeLabel.SetBounds(880, 22, 150, 22); timeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right; timeLabel.TextAlign = ContentAlignment.MiddleRight;
+        bottom.Controls.AddRange(new Control[] { playPause, stop, seek, timeLabel });
+        Controls.Add(videoHost); Controls.Add(bottom); Controls.Add(top);
+
+        if (!previewOnly) Shown += async (_, _) => await StartAsync();
+        else PreparePreview(title);
         FormClosing += OnClosing;
-        fileChoice.SelectedIndexChanged += async (_, _) => { if (fileChoice.SelectedIndex >= 0 && fileChoice.SelectedIndex < playable.Count && playable[fileChoice.SelectedIndex] != selected) await PlayFileAsync(playable[fileChoice.SelectedIndex]); };
-        playPause.Click += (_, _) => { if (player == null) return; if (player.IsPlaying) { player.Pause(); playPause.Text = "Play"; } else { player.Play(); playPause.Text = "Pause"; } };
+        fileChoice.SelectedIndexChanged += async (_, _) => { if (!previewOnly && fileChoice.SelectedIndex >= 0 && fileChoice.SelectedIndex < playable.Count && playable[fileChoice.SelectedIndex] != selected) await PlayFileAsync(playable[fileChoice.SelectedIndex]); };
+        playPause.Click += (_, _) => TogglePlayback();
         stop.Click += (_, _) => Close();
-        seek.MouseDown += (_, _) => userSeeking = true;
-        seek.MouseUp += (_, _) => { if (player != null && player.Length > 0) player.Time = (long)(player.Length * (seek.Value / 1000d)); userSeeking = false; };
+        seek.ValueCommitted += (_, _) => CommitSeek();
         uiTimer.Tick += (_, _) => RefreshStats();
+        Resize += (_, _) => LayoutPlayer();
+        LayoutPlayer();
+    }
+
+    void PreparePreview(string title)
+    {
+        fileChoice.Items.Add("Episode 01.mkv  (1.4 GB)"); fileChoice.SelectedIndex = 0; fileChoice.Enabled = true;
+        status.Text = "Streaming • 4.8 MB/s • temporary cache";
+        videoOverlay.Text = "VIDEO PREVIEW\n\nTorrent pieces stream into VideoShelf's temporary cache as needed.";
+        playPause.Enabled = true; playPause.Text = "Pause"; seek.Enabled = true; seek.Value = 318; timeLabel.Text = "08:12 / 25:49";
+    }
+
+    void LayoutPlayer()
+    {
+        int available = Math.Max(180, ClientSize.Width - 590);
+        status.Width = available;
+        int seekWidth = Math.Max(180, ClientSize.Width - 410);
+        seek.Width = seekWidth;
     }
 
     async Task StartAsync()
@@ -362,6 +404,7 @@ internal sealed class StreamForm : Form
             session = new TorrentSession(Path.Combine(cache, "metadata"), true);
             manager = await session.AddAsync(source, cache, true, cts.Token);
             status.Text = "Connecting • metadata only so far";
+            videoOverlay.Text = "Retrieving torrent metadata…";
             await manager.StartAsync();
             await manager.WaitForMetadataAsync(cts.Token);
             playable = manager.Files.Where(f => Playable.Contains(Path.GetExtension(f.Path))).OrderByDescending(f => f.Length).ToList();
@@ -371,37 +414,117 @@ internal sealed class StreamForm : Form
             fileChoice.BeginUpdate();
             foreach (var file in playable) fileChoice.Items.Add($"{file.Path}  ({FormatSize(file.Length)})");
             fileChoice.EndUpdate();
+            fileChoice.Enabled = true;
 
             Core.Initialize();
-            vlc = new LibVLC("--no-video-title-show", "--network-caching=1500");
+            vlc = new LibVLC("--no-video-title-show", "--network-caching=1800", "--clock-jitter=0", "--clock-synchro=0");
             player = new MediaPlayer(vlc);
             video.MediaPlayer = player;
             uiTimer.Start();
             fileChoice.SelectedIndex = 0;
         }
-        catch (OperationCanceledException) { Close(); }
-        catch (Exception ex) { status.Text = ex.Message; MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (OperationCanceledException) { if (!closing) Close(); }
+        catch (Exception ex)
+        {
+            videoOverlay.Text = "Unable to start this stream";
+            status.Text = ex.Message;
+            MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     async Task PlayFileAsync(ITorrentManagerFile file)
     {
-        if (manager == null || session == null || player == null) return;
-        selected = file;
-        status.Text = "Buffering selected video…";
-        foreach (var item in manager.Files) await manager.SetFilePriorityAsync(item, item == file ? Priority.High : Priority.DoNotDownload);
-        var httpStream = await manager.StreamProvider.CreateHttpStreamAsync(file, cts.Token);
-        string url = session.StreamingUrl(httpStream.RelativeUri);
-        using var media = new Media(vlc!, new Uri(url));
-        player.Play(media);
-        playPause.Text = "Pause";
+        int request = Interlocked.Increment(ref playbackRevision);
+        try
+        {
+            await playbackGate.WaitAsync(cts.Token);
+            try
+            {
+                if (request != playbackRevision || closing || manager == null || session == null || player == null || vlc == null) return;
+                selected = file;
+                status.Text = "Buffering selected video…";
+                videoOverlay.Text = "Buffering selected video…";
+                videoOverlay.Visible = true;
+                playPause.Enabled = false; seek.Enabled = false;
+
+                try { player.Stop(); } catch { }
+                currentMedia?.Dispose(); currentMedia = null;
+                await DisposeHttpStreamAsync();
+
+                foreach (var item in manager.Files)
+                    await manager.SetFilePriorityAsync(item, item == file ? Priority.High : Priority.DoNotDownload);
+
+                var httpStream = await manager.StreamProvider.CreateHttpStreamAsync(file, cts.Token);
+                if (request != playbackRevision || closing) { await DisposeObjectAsync(httpStream); return; }
+                currentHttpStream = httpStream;
+                string url = session.StreamingUrl(httpStream.RelativeUri);
+                currentMedia = new Media(vlc, new Uri(url));
+                bool started = player.Play(currentMedia);
+                if (!started) throw new InvalidOperationException("LibVLC could not start playback for the selected torrent file.");
+                playPause.Text = "Pause"; playPause.Enabled = true; seek.Enabled = true;
+                videoOverlay.Visible = false;
+            }
+            finally { playbackGate.Release(); }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (closing) return;
+            status.Text = "Playback failed • " + ex.Message;
+            videoOverlay.Text = "Playback failed\n\n" + ex.Message;
+            videoOverlay.Visible = true;
+            playPause.Text = "Play"; playPause.Enabled = player != null;
+        }
+    }
+
+    void TogglePlayback()
+    {
+        if (previewOnly) { playPause.Text = playPause.Text == "Pause" ? "Play" : "Pause"; return; }
+        if (player == null || currentMedia == null) return;
+        if (player.IsPlaying) { player.Pause(); playPause.Text = "Play"; }
+        else { player.Play(); playPause.Text = "Pause"; videoOverlay.Visible = false; }
+    }
+
+    void CommitSeek()
+    {
+        if (previewOnly) return;
+        if (player != null && player.Length > 0)
+            player.Time = (long)(player.Length * (seek.Value / 1000d));
     }
 
     void RefreshStats()
     {
-        if (manager != null)
+        if (manager != null && selected != null)
             status.Text = $"{manager.State} • {manager.Monitor.DownloadRate / (1024d * 1024d):0.0} MB/s • temporary cache";
-        if (!userSeeking && player != null && player.Length > 0)
-            seek.Value = Math.Max(0, Math.Min(1000, (int)(player.Time * 1000d / player.Length)));
+        if (player != null && player.Length > 0)
+        {
+            if (!seek.Focused) seek.Value = Math.Max(0, Math.Min(1000, (int)(player.Time * 1000d / player.Length)));
+            timeLabel.Text = $"{FormatTime(player.Time)} / {FormatTime(player.Length)}";
+            if (!player.IsPlaying && player.Time > 0 && player.Time < player.Length - 1000) playPause.Text = "Play";
+        }
+    }
+
+    async ValueTask DisposeHttpStreamAsync()
+    {
+        object? old = currentHttpStream; currentHttpStream = null;
+        if (old != null) await DisposeObjectAsync(old);
+    }
+
+    static async ValueTask DisposeObjectAsync(object value)
+    {
+        try
+        {
+            if (value is IAsyncDisposable asyncDisposable) await asyncDisposable.DisposeAsync();
+            else if (value is IDisposable disposable) disposable.Dispose();
+        }
+        catch { }
+    }
+
+    static string FormatTime(long milliseconds)
+    {
+        if (milliseconds < 0) milliseconds = 0;
+        TimeSpan time = TimeSpan.FromMilliseconds(milliseconds);
+        return time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");
     }
 
     static string FormatSize(long bytes) => bytes >= 1024L * 1024 * 1024 ? $"{bytes / (1024d * 1024d * 1024d):0.0} GB" : $"{bytes / (1024d * 1024d):0.0} MB";
@@ -409,12 +532,23 @@ internal sealed class StreamForm : Form
     async void OnClosing(object? sender, FormClosingEventArgs e)
     {
         if (closing) return;
-        closing = true; e.Cancel = true; cts.Cancel(); uiTimer.Stop();
-        try { player?.Stop(); } catch { }
-        video.MediaPlayer = null;
-        player?.Dispose(); vlc?.Dispose(); video.Dispose();
-        if (session != null) await session.DisposeAsync();
-        cts.Dispose();
+        closing = true; e.Cancel = true; Interlocked.Increment(ref playbackRevision); cts.Cancel(); uiTimer.Stop();
+        if (!previewOnly)
+        {
+            try { await playbackGate.WaitAsync(); }
+            catch { }
+            try
+            {
+                try { player?.Stop(); } catch { }
+                currentMedia?.Dispose(); currentMedia = null;
+                await DisposeHttpStreamAsync();
+                video.MediaPlayer = null;
+                player?.Dispose(); vlc?.Dispose();
+                if (session != null) await session.DisposeAsync();
+            }
+            finally { try { playbackGate.Release(); } catch { } }
+        }
+        playbackGate.Dispose(); cts.Dispose();
         try { Directory.Delete(cache, true); } catch { }
         e.Cancel = false; BeginInvoke(Close);
     }
