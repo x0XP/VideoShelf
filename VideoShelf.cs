@@ -23,6 +23,14 @@ static class Program {
     Environment.Exit(0);
    }catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
   }
+  int detailArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-rezero-detail",StringComparison.OrdinalIgnoreCase));
+  if(detailArg>=0){
+   try{
+    string output=(detailArg+1<args.Length&&args[detailArg+1].Length>0)?args[detailArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero-detail.png");
+    ScreenshotHarness.CaptureReZeroDetail(output);
+    Environment.Exit(0);
+   }catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;
+  }
   int screenshotArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-rezero",StringComparison.OrdinalIgnoreCase));
   if(screenshotArg>=0){
    try{
