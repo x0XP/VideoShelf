@@ -15,7 +15,7 @@ sealed partial class Shelf {
   sortVisual=CreateFilter(homeSort);homeSort.Visible=false;
   LayoutHomePolish();
  }
- void LayoutHomePolish(){if(sortVisual!=null){sortVisual.SetBounds(700,101,160,32);sortVisual.BringToFront();}}
+ void LayoutHomePolish(){if(sortVisual!=null){sortVisual.Bounds=homeSort.Bounds;sortVisual.BringToFront();}}
 
  void ApplyFinalPolish(){
   if(finalPolishApplied)return;
@@ -47,13 +47,11 @@ sealed partial class Shelf {
  }
  void LayoutFinalPolish(){
   if(!finalPolishApplied)return;
-  if(sourceVisual!=null)sourceVisual.SetBounds(496,13,150,40);
-  if(categoryVisual!=null)categoryVisual.SetBounds(658,13,125,40);
-  if(resolutionVisual!=null)resolutionVisual.SetBounds(795,13,140,40);
+  if(sourceVisual!=null){sourceVisual.Bounds=sourceFilter.Bounds;sourceVisual.BringToFront();}
+  if(categoryVisual!=null){categoryVisual.Bounds=categoryFilter.Bounds;categoryVisual.BringToFront();}
+  if(resolutionVisual!=null){resolutionVisual.Bounds=resolution.Bounds;resolutionVisual.BringToFront();}
   if(inspectorMetadataVisual!=null){
-   int w=Math.Max(0,inspector.ClientSize.Width-26);
-   int h=downloadVisual==null?220:Math.Max(105,downloadVisual.Top-371);
-   inspectorMetadataVisual.SetBounds(13,356,w,h);
+   inspectorMetadataVisual.Bounds=inspectorMeta.Bounds;
    inspectorMetadataVisual.BringToFront();
   }
   NativeDarkScroll.Apply(onlineCards);
