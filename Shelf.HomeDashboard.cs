@@ -6,7 +6,7 @@ using System.Windows.Forms;
 namespace VideoShelf {
 sealed partial class Shelf {
  readonly Panel collectionsBrowserView=new Panel();
- Label dashboardLibrary,dashboardCollections,dashboardDownloads,dashboardStreams,dashboardOnline,dashboardHint;
+ Label dashboardLibrary,dashboardCollections,dashboardDownloads,dashboardStreams,dashboardOnline,dashboardHint,settingsOnlineHint;
  Button dashboardCollectionsButton,dashboardSearchButton,dashboardAddButton,dashboardLibraryButton;
  Panel statCollections,statDownloads,statStreams,statOnline,dashboardQuickPanel,dashboardInfoPanel;
  Label dashboardQuickTitle,dashboardInfoTitle;
@@ -26,15 +26,17 @@ sealed partial class Shelf {
   homeHeading.Text="Collections";
 
   BuildDashboardHome();
+  BuildSettingsSearchHint();
 
   navHome.Click+=delegate{ShowDashboardHome();};
   navCollections.Click+=delegate{ShowCollectionsBrowser();};
+  navSettings.Click+=delegate{RefreshSettingsSearchHint();};
   back.Click+=delegate{ShowCollectionsBrowser();};
   homeView.VisibleChanged+=delegate{if(homeView.Visible&&section==ShellSection.Collections)BeginInvoke((MethodInvoker)ShowCollectionsBrowser);};
   statusRight.TextChanged+=delegate{if(section==ShellSection.Home)RefreshDashboardHome();};
   statusLeft.TextChanged+=delegate{if(section==ShellSection.Home)RefreshDashboardHome();};
 
-  LayoutDashboardHome();RefreshDashboardHome();
+  LayoutDashboardHome();RefreshDashboardHome();RefreshSettingsSearchHint();
  }
 
  void BuildDashboardHome(){
@@ -71,6 +73,19 @@ sealed partial class Shelf {
   dashboardInfoPanel.Paint+=delegate(object s,PaintEventArgs e){using(var p=new Pen(XdolfTheme.Outline))e.Graphics.DrawRectangle(p,0,0,dashboardInfoPanel.Width-1,dashboardInfoPanel.Height-1);};
   var infoText=new Label{Name="DashboardInfoText",Text="Collections are folders inside your selected VideoShelf library. Open Collections to browse artwork and local videos, or Search to find seeded torrent metadata. Online search never starts a media transfer until you explicitly choose Download or Stream.",Left=20,Top=20,Width=830,Height=72,ForeColor=XdolfTheme.Text,Font=new Font("Segoe UI",9.5f)};
   dashboardInfoPanel.Controls.Add(infoText);homeView.Controls.AddRange(new Control[]{dashboardInfoTitle,dashboardInfoPanel});
+ }
+
+ void BuildSettingsSearchHint(){
+  settingsSource.Text="Configure custom source";
+  settingsOnlineHint=new Label{Left=24,Top=310,Width=760,Height=58,ForeColor=XdolfTheme.Muted,Font=new Font("Segoe UI",9.5f),Text="Built-in public metadata sources are used automatically when no custom source is configured. A custom Torznab/XML/RSS/JSON source is optional."};
+  settingsView.Controls.Add(settingsOnlineHint);
+ }
+
+ void RefreshSettingsSearchHint(){
+  if(settingsOnlineHint==null)return;
+  onlineSettings=OnlineSettings.Load();
+  settingsOnlineHint.Text=onlineSettings.Configured?"A custom metadata source is configured. Clear its URL to return to VideoShelf's built-in public metadata sources.":"Built-in public metadata sources are active. You can optionally configure a custom Torznab/XML/RSS/JSON metadata source.";
+  if(section==ShellSection.Settings)SetStatus("Settings",onlineSettings.Configured?"Custom online metadata source configured":"Built-in online metadata sources active");
  }
 
  Panel MakeDashboardStat(string title,out Label value,int left,int top){
