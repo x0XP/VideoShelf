@@ -29,15 +29,23 @@ sealed class Person { public string Path, Name; public Image Photo; public strin
 sealed class Video { public string Path, Name, Relative; public long Size; public DateTime Modified; }
 sealed class Portrait : Button {
  public Person Person;
- public Portrait(Person person) { Person=person; Size=new Size(204,264); Margin=new Padding(0,0,20,20); FlatStyle=FlatStyle.Flat; FlatAppearance.BorderSize=0; Cursor=Cursors.Hand; Text=person.Name; AccessibleName=person.Name; }
+ public Portrait(Person person) {
+  Person=person; Size=new Size(204,264); Margin=new Padding(0,0,20,20); FlatStyle=FlatStyle.Flat; FlatAppearance.BorderSize=0; Cursor=Cursors.Hand; Text=person.Name; AccessibleName=person.Name; BackColor=XdolfTheme.Panel;
+ }
  protected override void OnPaint(PaintEventArgs e) {
-  Graphics g=e.Graphics; g.SmoothingMode=SmoothingMode.AntiAlias; g.Clear(Focused || ClientRectangle.Contains(PointToClient(Cursor.Position)) ? Color.FromArgb(43,51,69) : Color.FromArgb(28,34,47));
-  Rectangle r=new Rectangle(10,10,184,190);
+  Graphics g=e.Graphics; g.SmoothingMode=SmoothingMode.None;
+  bool hot=Focused || ClientRectangle.Contains(PointToClient(Cursor.Position));
+  using(var fill=new SolidBrush(hot?XdolfTheme.Hover:XdolfTheme.Panel))g.FillRectangle(fill,ClientRectangle);
+  using(var border=new Pen(XdolfTheme.Outline))g.DrawRectangle(border,0,0,Width-1,Height-1);
+  using(var blue=new SolidBrush(XdolfTheme.AccentBlue))g.FillRectangle(blue,3,0,Width-3,2);
+  using(var red=new SolidBrush(XdolfTheme.AccentRed))g.FillRectangle(red,0,0,3,Height);
+  Rectangle r=new Rectangle(10,11,184,188);
   if(Person.Photo!=null) { Image im=Person.Photo; float scale=Math.Max((float)r.Width/im.Width,(float)r.Height/im.Height); float w=r.Width/scale,h=r.Height/scale; g.DrawImage(im,r,new RectangleF((im.Width-w)/2,(im.Height-h)/2,w,h),GraphicsUnit.Pixel); }
-  else { using(Brush b=new SolidBrush(Color.FromArgb(46,57,79))) g.FillRectangle(b,r); using(Font f=new Font("Segoe UI",44,FontStyle.Bold)) TextRenderer.DrawText(g,Person.Name.Length==0?"?":Person.Name.Substring(0,1).ToUpper(),f,r,Color.FromArgb(151,180,236),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter); }
-  TextRenderer.DrawText(g,Person.Name,Font,new Rectangle(12,211,180,24),Color.White,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
-  using(Font f=new Font("Segoe UI",9)) TextRenderer.DrawText(g,"View videos  →",f,new Rectangle(12,238,180,18),Color.FromArgb(148,167,200));
-  if(Focused) ControlPaint.DrawFocusRectangle(g,ClientRectangle);
+  else { using(Brush b=new SolidBrush(XdolfTheme.PanelRaised)) g.FillRectangle(b,r); using(Font f=new Font("Segoe UI",44,FontStyle.Bold)) TextRenderer.DrawText(g,Person.Name.Length==0?"?":Person.Name.Substring(0,1).ToUpper(),f,r,XdolfTheme.AccentBlue,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter); }
+  using(var imageBorder=new Pen(Color.FromArgb(78,XdolfTheme.Outline)))g.DrawRectangle(imageBorder,r.X,r.Y,r.Width-1,r.Height-1);
+  TextRenderer.DrawText(g,Person.Name,Font,new Rectangle(12,211,180,24),XdolfTheme.TextStrong,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
+  using(Font f=new Font("Segoe UI",9)) TextRenderer.DrawText(g,"View videos  →",f,new Rectangle(12,238,180,18),XdolfTheme.Muted,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
+  if(Focused) ControlPaint.DrawFocusRectangle(g,new Rectangle(5,5,Width-10,Height-10),XdolfTheme.Text,hot?XdolfTheme.Hover:XdolfTheme.Panel);
  }
  protected override void OnMouseEnter(EventArgs e){base.OnMouseEnter(e);Invalidate();}
  protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);Invalidate();}
