@@ -6,19 +6,19 @@ namespace VideoShelf.TransferHost;
 internal sealed class FileListForm : Form
 {
     readonly string source;
-    readonly string displayTitle;
     readonly Label state = Theme.Label("Retrieving torrent metadata…");
-    readonly ListView files = new();
+    readonly DarkListView files = new();
     readonly Button close = Theme.Button("Close", 100);
     readonly CancellationTokenSource cts = new();
     readonly string cache;
+    readonly bool previewOnly;
     TorrentSession? session;
     bool closing;
 
-    public FileListForm(string source, string title)
+    public FileListForm(string source, string title, bool previewOnly = false)
     {
         this.source = source;
-        displayTitle = title;
+        this.previewOnly = previewOnly;
         cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "MetadataPreview", Guid.NewGuid().ToString("N"));
 
         Theme.Form(this, "View files", new Size(820, 570));
@@ -28,16 +28,10 @@ internal sealed class FileListForm : Form
         var accentLeft = new Panel { Dock = DockStyle.Left, Width = 3, BackColor = Theme.Red };
         var heading = Theme.Label("TORRENT FILES", true); heading.SetBounds(25, 22, 740, 26);
         var name = Theme.Label(title, true); name.SetBounds(25, 55, 750, 27); name.AutoEllipsis = true;
-        state.SetBounds(25, 87, 750, 24);
+        state.SetBounds(25, 87, 750, 24); state.AutoEllipsis = true;
 
         files.SetBounds(25, 124, 770, 374);
         files.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        files.View = View.Details;
-        files.FullRowSelect = true;
-        files.HideSelection = false;
-        files.BackColor = Theme.Panel;
-        files.ForeColor = Theme.Text;
-        files.BorderStyle = BorderStyle.FixedSingle;
         files.Columns.Add("FILE", 540);
         files.Columns.Add("TYPE", 80);
         files.Columns.Add("SIZE", 125);
@@ -47,8 +41,32 @@ internal sealed class FileListForm : Form
 
         Controls.AddRange(new Control[] { accentTop, accentLeft, heading, name, state, files, close });
         close.Click += (_, _) => Close();
-        Shown += async (_, _) => await LoadMetadataAsync();
+        if (!previewOnly) Shown += async (_, _) => await LoadMetadataAsync();
+        else PreparePreview();
         FormClosing += OnClosing;
+        Resize += (_, _) => FitColumns();
+        FitColumns();
+    }
+
+    void PreparePreview()
+    {
+        state.Text = "6 files • metadata only • no media payload downloaded";
+        files.Items.Add(new ListViewItem(new[] { "Re.Zero.S01E01.1080p.mkv", "MKV", "1.4 GB" }));
+        files.Items.Add(new ListViewItem(new[] { "Re.Zero.S01E02.1080p.mkv", "MKV", "1.3 GB" }));
+        files.Items.Add(new ListViewItem(new[] { "Re.Zero.S01E03.1080p.mkv", "MKV", "1.4 GB" }));
+        files.Items.Add(new ListViewItem(new[] { "Subs/English.ass", "ASS", "82 KB" }));
+        files.Items.Add(new ListViewItem(new[] { "Subs/Signs.ass", "ASS", "31 KB" }));
+        files.Items.Add(new ListViewItem(new[] { "cover.jpg", "JPG", "418 KB" }));
+    }
+
+    void FitColumns()
+    {
+        if (files.Columns.Count != 3 || files.ClientSize.Width <= 0) return;
+        int type = 82, size = 125;
+        files.Columns[1].Width = type;
+        files.Columns[2].Width = size;
+        files.Columns[0].Width = Math.Max(220, files.ClientSize.Width - type - size - 4);
+        NativeTheme.Apply(files);
     }
 
     async Task LoadMetadataAsync()
@@ -88,6 +106,7 @@ internal sealed class FileListForm : Form
                 files.Items.Add(new ListViewItem(new[] { file.Path, ext, FormatSize(file.Length) }));
             }
             files.EndUpdate();
+            FitColumns();
 
             state.Text = $"{files.Items.Count} files • metadata only • no media payload downloaded";
         }
