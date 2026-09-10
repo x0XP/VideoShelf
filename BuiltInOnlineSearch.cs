@@ -18,7 +18,7 @@ static class BuiltInOnlineSearch {
   "https://nyaa.media/?page=rss&q={query}&c=1_0&f=0",
   "https://nyaa.mom/?page=rss&q={query}&c=1_0&f=0",
   "https://www.torlock2.com/torznab/api",
-  "https://stremthrufortheweebs.midnightignite.me/v0/torznab/api"
+  "https://bitmagnetfortheweebs.midnightignite.me/torznab/api"
  };
 
  static HttpClient CreateHttp(){
