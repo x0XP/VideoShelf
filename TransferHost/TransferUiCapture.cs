@@ -15,18 +15,32 @@ internal static class TransferUiCapture
     static void CaptureForm(Form form, string path)
     {
         using (form)
+        using (var host = new Panel())
         {
+            Size intended = form.ClientSize;
+            form.MinimumSize = Size.Empty;
+            form.MaximumSize = Size.Empty;
+            form.TopLevel = false;
+            form.FormBorderStyle = FormBorderStyle.None;
             form.StartPosition = FormStartPosition.Manual;
-            form.Location = new Point(20, 20);
+            form.Location = Point.Empty;
+            form.ClientSize = intended;
+            host.Size = intended;
+            host.BackColor = Theme.Background;
+            host.CreateControl();
+            host.Controls.Add(form);
             form.Show();
             form.PerformLayout();
+            foreach (Control child in form.Controls) child.PerformLayout();
             Application.DoEvents();
             Thread.Sleep(180);
             Application.DoEvents();
-            using var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height, PixelFormat.Format32bppArgb);
-            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+            using var bitmap = new Bitmap(intended.Width, intended.Height, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(bitmap)) g.Clear(Theme.Background);
+            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, intended));
             bitmap.Save(path, ImageFormat.Png);
             form.Hide();
+            host.Controls.Remove(form);
         }
         if (!File.Exists(path) || new FileInfo(path).Length < 5000)
             throw new InvalidOperationException("Transfer UI screenshot was not created correctly: " + Path.GetFileName(path));
