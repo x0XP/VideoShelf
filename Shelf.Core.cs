@@ -44,7 +44,7 @@ sealed partial class Shelf : Form {
   var actions=new FlowLayoutPanel {Dock=DockStyle.Top,Height=49,WrapContents=false,BackColor=XdolfTheme.Background}; var play=new Button(); Style(play,"▶ Play selected",0,0,145); var folder=new Button(); Style(folder,"Open person folder",0,0,170); var findOnline=new Button(); Style(findOnline,"Find online",0,0,120); actions.Controls.AddRange(new Control[]{play,folder,findOnline});
   tips.SetToolTip(play,"Open the selected local video using the Windows default media player.");
   tips.SetToolTip(folder,"Open this collection's physical folder in Windows Explorer.");
-  tips.SetToolTip(findOnline,"Search the configured online source for seeded matches to this collection.");
+  tips.SetToolTip(findOnline,"Search the configured online source for seeded torrent metadata. VideoShelf does not download the media while searching.");
   files.Dock=DockStyle.Fill; files.View=View.Details; files.FullRowSelect=true; files.MultiSelect=false; files.HideSelection=false; files.BackColor=XdolfTheme.Panel; files.ForeColor=XdolfTheme.Text; files.BorderStyle=BorderStyle.FixedSingle;
   files.Columns.Add("VIDEO",400); files.Columns.Add("TYPE",80); files.Columns.Add("SIZE",100); files.Columns.Add("MODIFIED",150); files.Columns.Add("SUBFOLDER",200);
   localDetail.Controls.Add(files); localDetail.Controls.Add(actions);
@@ -52,12 +52,12 @@ sealed partial class Shelf : Form {
   onlineDetail.Dock=DockStyle.Fill; onlineDetail.Visible=false; onlineDetail.BackColor=XdolfTheme.Background;
   var onlineActions=new FlowLayoutPanel {Dock=DockStyle.Top,Height=78,WrapContents=true,AutoScroll=false,BackColor=XdolfTheme.Background};
   var local=new Button(); Style(local,"← Local videos",0,0,125); onlineQuery.Width=390;onlineQuery.Height=29;XdolfTheme.StyleInput(onlineQuery);onlineQuery.BorderStyle=BorderStyle.FixedSingle;onlineQuery.Margin=new Padding(3,2,3,3);onlineQuery.AccessibleName="Online search";
-  var searchOnline=new Button();Style(searchOnline,"Search online",0,0,125);var configure=new Button();Style(configure,"Online source",0,0,125);
-  tips.SetToolTip(local,"Return to videos already stored in this collection."); tips.SetToolTip(onlineQuery,"Edit the query sent to the configured online source."); tips.SetToolTip(searchOnline,"Run the current online search query."); tips.SetToolTip(configure,"Configure the Torznab-compatible source used for online searches.");
+  var searchOnline=new Button();Style(searchOnline,"Search metadata",0,0,140);var configure=new Button();Style(configure,"Online source",0,0,125);
+  tips.SetToolTip(local,"Return to videos already stored in this collection."); tips.SetToolTip(onlineQuery,"Edit the query sent to the configured online source."); tips.SetToolTip(searchOnline,"Retrieve torrent metadata only: title, resolution, size, seeders, source and artwork. No video is downloaded."); tips.SetToolTip(configure,"Configure the Torznab-compatible source used for online searches.");
   onlineActions.Controls.AddRange(new Control[]{local,onlineQuery,searchOnline,configure});onlineActions.SetFlowBreak(configure,true);
   var resLabel=new Label{Text="Resolution",ForeColor=muted,Width=75,Height=27,TextAlign=ContentAlignment.MiddleLeft,Margin=new Padding(3,3,0,0)};
   resolution.Width=125;resolution.DropDownStyle=ComboBoxStyle.DropDownList;XdolfTheme.StyleInput(resolution);resolution.Items.AddRange(new object[]{"All resolutions","2160p","1080p","720p","Other"});resolution.SelectedIndex=0;tips.SetToolTip(resolution,"Filter online results by detected video resolution.");
-  var openOnline=new Button();Style(openOnline,"Open selected",0,0,125);var copyLink=new Button();Style(copyLink,"Copy link",0,0,105);tips.SetToolTip(openOnline,"Open the selected online result with its registered Windows handler.");tips.SetToolTip(copyLink,"Copy the selected result link to the clipboard.");
+  var openOnline=new Button();Style(openOnline,"▶ Stream locally",0,0,145);var copyLink=new Button();Style(copyLink,"Copy link",0,0,105);tips.SetToolTip(openOnline,"Hand the selected torrent/magnet link to its registered local Windows handler. VideoShelf itself does not download the media.");tips.SetToolTip(copyLink,"Copy the selected torrent/magnet link to the clipboard.");
   onlineActions.Controls.AddRange(new Control[]{resLabel,resolution,openOnline,copyLink});
   onlineFiles.Dock=DockStyle.Fill;onlineFiles.View=View.Details;onlineFiles.FullRowSelect=true;onlineFiles.MultiSelect=false;onlineFiles.HideSelection=false;onlineFiles.BackColor=XdolfTheme.Panel;onlineFiles.ForeColor=XdolfTheme.Text;onlineFiles.BorderStyle=BorderStyle.FixedSingle;onlineFiles.ShowItemToolTips=false;
   onlineThumbs.ColorDepth=ColorDepth.Depth32Bit;onlineThumbs.ImageSize=new Size(96,54);ResetOnlineThumbnailImages();onlineFiles.SmallImageList=onlineThumbs;
