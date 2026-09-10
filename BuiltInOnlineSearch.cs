@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace VideoShelf {
 static class BuiltInOnlineSearch {
+ sealed class SourceResult { public bool Failed; public List<OnlineResult> Results=new List<OnlineResult>(); }
  static readonly string[] Sources={
   "https://nyaa.si/?page=rss&q={query}&c=1_0&f=0",
   "https://nyaa.media/?page=rss&q={query}&c=1_0&f=0",
@@ -18,26 +19,29 @@ static class BuiltInOnlineSearch {
  public static async Task<List<OnlineResult>> Search(string query,CancellationToken ct){
   string normalized=Regex.Replace((query??"").Trim(),@"[^\p{L}\p{N}]+"," ").Trim();
   if(normalized.Length==0)normalized=(query??"").Trim();
-  var combined=new List<OnlineResult>();int attempted=0,failed=0;
-  foreach(string source in Sources){
-   ct.ThrowIfCancellationRequested();attempted++;
-   using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct)){
-    timeout.CancelAfter(TimeSpan.FromSeconds(9));
-    try{
-     var found=await TorznabSearch.Search(normalized,new OnlineSettings{Url=source,ApiKey="",AutoSearch=true},timeout.Token);
-     if(found!=null)combined.AddRange(found.Where(r=>r!=null&&r.Seeders>0));
-    }catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;failed++;}
-    catch{failed++;}
-   }
-   if(combined.Count>=40)break;
-  }
+  var tasks=Sources.Select(source=>SearchSource(source,normalized,ct)).ToArray();
+  SourceResult[] responses=await Task.WhenAll(tasks);
   ct.ThrowIfCancellationRequested();
-  var result=combined.Where(r=>r.Seeders>0&&!string.IsNullOrWhiteSpace(r.Link))
+  var combined=responses.SelectMany(r=>r.Results).Where(r=>r!=null&&r.Seeders>0&&!string.IsNullOrWhiteSpace(r.Link)).ToList();
+  var result=combined
    .GroupBy(r=>string.IsNullOrWhiteSpace(r.Link)?r.Title:r.Link,StringComparer.OrdinalIgnoreCase)
    .Select(g=>g.OrderByDescending(r=>r.Seeders).First())
    .OrderByDescending(r=>r.Seeders).ThenByDescending(r=>r.Published).ThenBy(r=>r.Title,StringComparer.OrdinalIgnoreCase).Take(80).ToList();
-  if(result.Count==0&&attempted>0&&failed==attempted)throw new InvalidOperationException("Built-in metadata sources are currently unavailable. You can retry or configure a custom source in Settings.");
+  if(result.Count==0&&responses.Length>0&&responses.All(r=>r.Failed))throw new InvalidOperationException("Built-in metadata sources are currently unavailable. You can retry or configure a custom source in Settings.");
   return result;
+ }
+
+ static async Task<SourceResult> SearchSource(string source,string query,CancellationToken parent){
+  var response=new SourceResult();
+  using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(parent)){
+   timeout.CancelAfter(TimeSpan.FromSeconds(10));
+   try{
+    var found=await TorznabSearch.Search(query,new OnlineSettings{Url=source,ApiKey="",AutoSearch=true},timeout.Token);
+    if(found!=null)response.Results=found.Where(r=>r!=null&&r.Seeders>0).ToList();
+   }catch(OperationCanceledException){if(parent.IsCancellationRequested)throw;response.Failed=true;}
+   catch{response.Failed=true;}
+  }
+  return response;
  }
 }
 }
