@@ -14,6 +14,7 @@ sealed partial class Shelf {
  }
  async void SearchOnline(string query,bool showStatus){
   onlineSettings=OnlineSettings.Load();query=(query??"").Trim();if(query.Length==0){onlineError="Enter a search query.";if(showStatus){ShowSearch();RenderOnline();}return;}
+  suppress=true;sourceFilter.SelectedIndex=0;categoryFilter.SelectedIndex=0;resolution.SelectedIndex=0;suppress=false;
   onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;var ct=onlineScan.Token;Person target=current;onlineSearching=true;onlineError="";onlineQueryFor=query;if(showStatus){ShowSection(searchView,ShellSection.Search);RenderOnline();}
   try{
    List<OnlineResult> found=onlineSettings.Configured?await TorznabSearch.Search(query,onlineSettings,ct):await BuiltInOnlineSearch.Search(query,ct);
@@ -33,7 +34,8 @@ sealed partial class Shelf {
   string q=onlineQueryFor.Length>0?onlineQueryFor:onlineQuery.Text.Trim();searchHeading.Text=q.Length==0?"Search":"Search results for “"+q+"”";
   if(onlineSearching){searchCount.Text=onlineSettings.Configured?"Searching your metadata source…":"Searching built-in metadata sources…";SetStatus("Searching…","No media is being downloaded.");}
   else if(onlineError.Length>0){searchCount.Text="Search unavailable";SetStatus("Search unavailable",onlineError);}
-  else if(rows.Count==0){searchCount.Text="No seeded results found";SetStatus("No seeded results","Try a broader search or change the category/resolution filters.");}
+  else if(rows.Count==0&&onlineResults.Count>0){searchCount.Text="No results match the current filters";SetStatus("Filtered results","Set source, category and resolution to All to show every seeded result.");}
+  else if(rows.Count==0){searchCount.Text="No seeded results found";SetStatus("No seeded results","Try a broader search.");}
   else{searchCount.Text="Found "+rows.Count+" result"+(rows.Count==1?"":"s")+" (metadata only)";SetStatus("Ready","Results are metadata only. No files are downloaded.");}
   if(!onlineSearching&&!thumbnailsLoading&&!thumbnailsPaused&&rows.Count>0)StartThumbnailLoading(rows);
  }
