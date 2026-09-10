@@ -25,7 +25,13 @@ sealed class OnlineResult {
 sealed class OnlineSettings {
  public string Url="", ApiKey="";
  public bool AutoSearch=true;
- public bool Configured { get { Uri uri; return Uri.TryCreate(Url,UriKind.Absolute,out uri)&&(uri.Scheme=="http"||uri.Scheme=="https"); } }
+ public bool Configured {
+  get {
+   Uri uri;
+   string candidate=(Url??"").Replace("{query}","test");
+   return Uri.TryCreate(candidate,UriKind.Absolute,out uri)&&(uri.Scheme=="http"||uri.Scheme=="https");
+  }
+ }
  static readonly string file=AppDataPaths.MigrateFile("online-source.txt");
  public static OnlineSettings Load(){
   var s=new OnlineSettings();
@@ -51,7 +57,7 @@ static class TorznabSearch {
   ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
   var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};
   var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(30)};
-  c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.3");
+  c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.5");
   return c;
  }
  static string Elem(XElement item,string local){
@@ -66,7 +72,20 @@ static class TorznabSearch {
   return "";
  }
  static int IntValue(string value){int n;return int.TryParse(value,NumberStyles.Integer,CultureInfo.InvariantCulture,out n)?Math.Max(0,n):0;}
- static long LongValue(string value){long n;return long.TryParse(value,NumberStyles.Integer,CultureInfo.InvariantCulture,out n)?Math.Max(0,n):0;}
+ static long SizeValue(string value){
+  if(string.IsNullOrWhiteSpace(value))return 0;
+  long n;if(long.TryParse(value.Trim(),NumberStyles.Integer,CultureInfo.InvariantCulture,out n))return Math.Max(0,n);
+  Match m=Regex.Match(value.Trim(),@"^([0-9]+(?:\.[0-9]+)?)\s*([KMGT]?I?B)$",RegexOptions.IgnoreCase);
+  if(!m.Success)return 0;
+  double amount;if(!double.TryParse(m.Groups[1].Value,NumberStyles.Float,CultureInfo.InvariantCulture,out amount))return 0;
+  string unit=m.Groups[2].Value.ToUpperInvariant();double multiplier=1;
+  if(unit=="KB"||unit=="KIB")multiplier=1024d;
+  else if(unit=="MB"||unit=="MIB")multiplier=1024d*1024d;
+  else if(unit=="GB"||unit=="GIB")multiplier=1024d*1024d*1024d;
+  else if(unit=="TB"||unit=="TIB")multiplier=1024d*1024d*1024d*1024d;
+  double bytes=amount*multiplier;
+  return bytes<=0?0:bytes>=long.MaxValue?long.MaxValue:(long)bytes;
+ }
  static string Resolution(string title){
   Match m=Regex.Match(title,@"(?<!\d)(2160|1080|720|576|540|480|360)p\b",RegexOptions.IgnoreCase);
   if(m.Success)return m.Groups[1].Value+"p";
@@ -83,13 +102,20 @@ static class TorznabSearch {
  }
  static string QueryUrl(OnlineSettings settings,string query){
   string url=settings.Url.Trim();
+  if(url.IndexOf("{query}",StringComparison.OrdinalIgnoreCase)>=0)
+   return Regex.Replace(url,@"\{query\}",m=>Uri.EscapeDataString(query.Trim()),RegexOptions.IgnoreCase);
   string sep=url.IndexOf('?')>=0?"&":"?";
   url+=sep+"t=search&q="+Uri.EscapeDataString(query.Trim());
   if(settings.ApiKey.Trim().Length>0)url+="&apikey="+Uri.EscapeDataString(settings.ApiKey.Trim());
   return url;
  }
+ static string MagnetFor(string explicitMagnet,string infoHash){
+  if(!string.IsNullOrWhiteSpace(explicitMagnet)&&explicitMagnet.StartsWith("magnet:",StringComparison.OrdinalIgnoreCase))return explicitMagnet.Trim();
+  string hash=(infoHash??"").Trim();
+  return Regex.IsMatch(hash,@"^[A-Fa-f0-9]{40}$")?"magnet:?xt=urn:btih:"+hash:"";
+ }
  public static async Task<List<OnlineResult>> Search(string query,OnlineSettings settings,CancellationToken ct){
-  if(!settings.Configured)throw new InvalidOperationException("Configure a Torznab source first.");
+  if(!settings.Configured)throw new InvalidOperationException("Configure an online metadata source first.");
   if(query.Trim().Length==0)return new List<OnlineResult>();
   string url=QueryUrl(settings,query);
   string xml;
@@ -105,17 +131,22 @@ static class TorznabSearch {
   foreach(var item in doc.Descendants().Where(x=>x.Name.LocalName.Equals("item",StringComparison.OrdinalIgnoreCase))){
    ct.ThrowIfCancellationRequested();
    string title=Elem(item,"title");if(title.Length==0)continue;
-   int seeders=IntValue(Attr(item,"seeders"));
+   int seeders=IntValue(Attr(item,"seeders"));if(seeders==0)seeders=IntValue(Elem(item,"seeders"));
    if(seeders<=0)continue; // Hard rule: never display unseeded results.
-   int leechers=IntValue(Attr(item,"leechers"));if(leechers==0)leechers=IntValue(Attr(item,"peers"));
-   string magnet=Attr(item,"magneturl");
+   int leechers=IntValue(Attr(item,"leechers"));if(leechers==0)leechers=IntValue(Attr(item,"peers"));if(leechers==0)leechers=IntValue(Elem(item,"leechers"));if(leechers==0)leechers=IntValue(Elem(item,"peers"));
+   string directMagnet=Attr(item,"magneturl");if(directMagnet.Length==0)directMagnet=Elem(item,"magnet");
+   string infoHash=Attr(item,"infohash");if(infoHash.Length==0)infoHash=Elem(item,"infoHash");
+   string magnet=MagnetFor(directMagnet,infoHash);
    XElement enclosure=item.Elements().FirstOrDefault(x=>x.Name.LocalName.Equals("enclosure",StringComparison.OrdinalIgnoreCase));
    string enclosureUrl="",enclosureLength="";
    if(enclosure!=null){var u=enclosure.Attribute("url");var l=enclosure.Attribute("length");if(u!=null)enclosureUrl=u.Value;if(l!=null)enclosureLength=l.Value;}
-   string page=Elem(item,"link");if(page.Length==0)page=Elem(item,"guid");
-   string link=magnet.Length>0?magnet:(enclosureUrl.Length>0?enclosureUrl:page);
+   string rawLink=Elem(item,"link"),guid=Elem(item,"guid"),page=rawLink;
+   Uri guidUri;
+   if((page.EndsWith(".torrent",StringComparison.OrdinalIgnoreCase)||page.IndexOf("/download/",StringComparison.OrdinalIgnoreCase)>=0)&&Uri.TryCreate(guid,UriKind.Absolute,out guidUri))page=guid;
+   if(page.Length==0)page=guid;
+   string link=magnet.Length>0?magnet:(enclosureUrl.Length>0?enclosureUrl:rawLink.Length>0?rawLink:page);
    if(link.Length==0)continue;
-   long size=LongValue(Attr(item,"size"));if(size==0)size=LongValue(enclosureLength);
+   long size=SizeValue(Attr(item,"size"));if(size==0)size=SizeValue(Elem(item,"size"));if(size==0)size=SizeValue(enclosureLength);
    DateTime published=DateTime.MinValue;DateTime.TryParse(Elem(item,"pubDate"),CultureInfo.InvariantCulture,DateTimeStyles.AllowWhiteSpaces,out published);
    results.Add(new OnlineResult{Title=title,Link=link,PageUrl=page,Source=SourceFor(item,page),Resolution=Resolution(title),Size=size,Seeders=seeders,Leechers=leechers,Published=published});
   }
@@ -127,19 +158,19 @@ sealed class OnlineSourceDialog : Form {
  readonly TextBox url=new TextBox(), key=new TextBox(); readonly CheckBox autoSearch=new CheckBox();
  public OnlineSettings Value;
  public OnlineSourceDialog(OnlineSettings current){
-  Text="Online search source";StartPosition=FormStartPosition.CenterParent;FormBorderStyle=FormBorderStyle.FixedDialog;MaximizeBox=false;MinimizeBox=false;ShowInTaskbar=false;ClientSize=new Size(610,310);BackColor=Color.FromArgb(17,22,32);ForeColor=Color.White;Font=new Font("Segoe UI",10);
-  var intro=new Label{Left=22,Top=18,Width=565,Height=52,ForeColor=Color.FromArgb(156,170,193),Text="Use a Torznab-compatible endpoint from software such as Jackett or Prowlarr. VideoShelf searches that endpoint and only displays results with at least one seeder."};
-  var urlLabel=new Label{Left=22,Top=84,Width=160,Height=22,Text="Torznab API URL"};url.SetBounds(22,108,565,27);url.Text=current.Url;
-  var keyLabel=new Label{Left=22,Top=149,Width=160,Height=22,Text="API key (if required)"};key.SetBounds(22,173,565,27);key.Text=current.ApiKey;key.UseSystemPasswordChar=true;
-  autoSearch.SetBounds(22,214,360,25);autoSearch.Text="Search automatically when a person is opened";autoSearch.Checked=current.AutoSearch;autoSearch.ForeColor=Color.White;
-  var save=new Button{Text="Save",Left=405,Top=257,Width=86,Height=32,DialogResult=DialogResult.OK};var cancel=new Button{Text="Cancel",Left=501,Top=257,Width=86,Height=32,DialogResult=DialogResult.Cancel};
-  foreach(var b in new[]{save,cancel}){b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=0;b.BackColor=Color.FromArgb(28,34,47);b.ForeColor=Color.White;}
+  Text="Online search source";StartPosition=FormStartPosition.CenterParent;FormBorderStyle=FormBorderStyle.FixedDialog;MaximizeBox=false;MinimizeBox=false;ShowInTaskbar=false;ClientSize=new Size(610,326);BackColor=XdolfTheme.Background;ForeColor=XdolfTheme.Text;Font=new Font("Segoe UI",10);
+  var intro=new Label{Left=22,Top=18,Width=565,Height=66,ForeColor=XdolfTheme.Muted,Text="Use a Torznab endpoint from Jackett/Prowlarr, or an XML/RSS search-feed URL containing {query}. VideoShelf fetches metadata only and never shows results with zero seeders."};
+  var urlLabel=new Label{Left=22,Top=92,Width=260,Height=22,Text="Torznab URL or RSS search template"};url.SetBounds(22,116,565,27);url.Text=current.Url;XdolfTheme.StyleInput(url);url.BorderStyle=BorderStyle.FixedSingle;
+  var keyLabel=new Label{Left=22,Top=157,Width=160,Height=22,Text="API key (if required)"};key.SetBounds(22,181,565,27);key.Text=current.ApiKey;key.UseSystemPasswordChar=true;XdolfTheme.StyleInput(key);key.BorderStyle=BorderStyle.FixedSingle;
+  autoSearch.SetBounds(22,222,390,25);autoSearch.Text="Search automatically when a collection is opened";autoSearch.Checked=current.AutoSearch;autoSearch.ForeColor=XdolfTheme.Text;
+  var save=new Button{Text="Save",Left=405,Top=273,Width=86,Height=32,DialogResult=DialogResult.OK};var cancel=new Button{Text="Cancel",Left=501,Top=273,Width=86,Height=32,DialogResult=DialogResult.Cancel};
+  foreach(var b in new[]{save,cancel})XdolfTheme.StyleButton(b);
   Controls.AddRange(new Control[]{intro,urlLabel,url,keyLabel,key,autoSearch,save,cancel});AcceptButton=save;CancelButton=cancel;
  }
  protected override void OnFormClosing(FormClosingEventArgs e){
   if(DialogResult==DialogResult.OK){
-   string u=url.Text.Trim();Uri uri;
-   if(u.Length>0&&(!Uri.TryCreate(u,UriKind.Absolute,out uri)||(uri.Scheme!="http"&&uri.Scheme!="https"))){MessageBox.Show(this,"Enter a valid HTTP or HTTPS Torznab API URL, or leave it blank to disable online search.","VideoShelf");e.Cancel=true;return;}
+   string u=url.Text.Trim(),candidate=u.Replace("{query}","test");Uri uri;
+   if(u.Length>0&&(!Uri.TryCreate(candidate,UriKind.Absolute,out uri)||(uri.Scheme!="http"&&uri.Scheme!="https"))){MessageBox.Show(this,"Enter a valid HTTP or HTTPS Torznab URL/search-feed template, or leave it blank to disable online search.","VideoShelf");e.Cancel=true;return;}
    Value=new OnlineSettings{Url=u,ApiKey=key.Text.Trim(),AutoSearch=autoSearch.Checked};
   }
   base.OnFormClosing(e);
