@@ -17,6 +17,30 @@ jobs:
       - name: Build VideoShelf
         shell: cmd
         run: Start.cmd --build-only
+      - name: Verify VideoShelf application icon
+        shell: powershell
+        run: |
+          if (!(Test-Path '.\VideoShelf.ico')) { throw 'VideoShelf.ico was not generated.' }
+          if ((Get-Item '.\VideoShelf.ico').Length -lt 1000) { throw 'VideoShelf.ico is unexpectedly small.' }
+          Add-Type -AssemblyName System.Drawing
+          function Assert-BrandedIcon([string]$Path) {
+            $resolved = (Resolve-Path $Path).Path
+            $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($resolved)
+            if ($null -eq $icon) { throw "No Windows icon could be extracted from $Path" }
+            $bitmap = $icon.ToBitmap()
+            try {
+              $red = 0; $blue = 0
+              for ($x = 0; $x -lt $bitmap.Width; $x++) {
+                for ($y = 0; $y -lt $bitmap.Height; $y++) {
+                  $c = $bitmap.GetPixel($x, $y)
+                  if ($c.A -gt 100 -and $c.R -gt 140 -and $c.R -gt ($c.G + 40) -and $c.R -gt ($c.B + 20)) { $red++ }
+                  if ($c.A -gt 100 -and $c.B -gt 100 -and $c.B -gt ($c.R + 20)) { $blue++ }
+                }
+              }
+              if ($red -lt 5 -or $blue -lt 20) { throw "The branded red/blue VideoShelf icon was not found in $Path (red=$red blue=$blue)." }
+            } finally { $bitmap.Dispose(); $icon.Dispose() }
+          }
+          Assert-BrandedIcon '.\VideoShelf.exe'
       - name: Test folder creation with re:zero
         shell: cmd
         run: VideoShelf.exe --self-test
@@ -29,14 +53,30 @@ jobs:
           dotnet publish '.\TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
           if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
           Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
+          Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
           "VIDEOSHELF_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Test MonoTorrent and embedded LibVLC runtime
+      - name: Test MonoTorrent, LibVLC and transfer icon runtime
         shell: powershell
         run: |
           $transferExe = Join-Path $env:VIDEOSHELF_PACKAGE 'TransferHost\VideoShelf.TransferHost.exe'
           if (!(Test-Path $transferExe)) { throw 'TransferHost executable was not published.' }
           $process = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "TransferHost self-test failed with exit code $($process.ExitCode)." }
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($transferExe)
+          if ($null -eq $icon) { throw 'TransferHost has no embedded Windows icon.' }
+          $bitmap = $icon.ToBitmap()
+          try {
+            $red = 0; $blue = 0
+            for ($x = 0; $x -lt $bitmap.Width; $x++) {
+              for ($y = 0; $y -lt $bitmap.Height; $y++) {
+                $c = $bitmap.GetPixel($x, $y)
+                if ($c.A -gt 100 -and $c.R -gt 140 -and $c.R -gt ($c.G + 40) -and $c.R -gt ($c.B + 20)) { $red++ }
+                if ($c.A -gt 100 -and $c.B -gt 100 -and $c.B -gt ($c.R + 20)) { $blue++ }
+              }
+            }
+            if ($red -lt 5 -or $blue -lt 20) { throw "TransferHost does not contain the VideoShelf branded icon (red=$red blue=$blue)." }
+          } finally { $bitmap.Dispose(); $icon.Dispose() }
       - name: Build Windows installer
         shell: powershell
         run: |
@@ -59,7 +99,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'VideoShelf installer compilation failed.' }
           $installer = Join-Path $installerDir 'VideoShelf-Setup-v1.7.exe'
           if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1000000) { throw 'VideoShelf installer was not created correctly.' }
+          Copy-Item '.\VideoShelf.ico' (Join-Path $installerDir 'VideoShelf.ico')
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($installer)
+          if ($null -eq $icon) { throw 'The installer has no embedded Windows icon.' }
+          $bitmap = $icon.ToBitmap()
+          try {
+            $red = 0; $blue = 0
+            for ($x = 0; $x -lt $bitmap.Width; $x++) {
+              for ($y = 0; $y -lt $bitmap.Height; $y++) {
+                $c = $bitmap.GetPixel($x, $y)
+                if ($c.A -gt 100 -and $c.R -gt 140 -and $c.R -gt ($c.G + 40) -and $c.R -gt ($c.B + 20)) { $red++ }
+                if ($c.A -gt 100 -and $c.B -gt 100 -and $c.B -gt ($c.R + 20)) { $blue++ }
+              }
+            }
+            if ($red -lt 5 -or $blue -lt 20) { throw "The installer does not contain the VideoShelf branded icon (red=$red blue=$blue)." }
+          } finally { $bitmap.Dispose(); $icon.Dispose() }
           "VIDEOSHELF_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VIDEOSHELF_INSTALLER_DIR=$installerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Test silent installer and uninstaller
         shell: powershell
         run: |
@@ -69,8 +126,10 @@ jobs:
           $process = Start-Process -FilePath $env:VIDEOSHELF_INSTALLER -ArgumentList $args -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed with exit code $($process.ExitCode)." }
           $mainExe = Join-Path $installDir 'VideoShelf.exe'
+          $iconFile = Join-Path $installDir 'VideoShelf.ico'
           $transferExe = Join-Path $installDir 'TransferHost\VideoShelf.TransferHost.exe'
           if (!(Test-Path $mainExe)) { throw 'Installed VideoShelf.exe was not found.' }
+          if (!(Test-Path $iconFile)) { throw 'Installed VideoShelf.ico was not found.' }
           if (!(Test-Path $transferExe)) { throw 'Installed TransferHost runtime was not found.' }
           $selfTest = Start-Process -FilePath $mainExe -ArgumentList '--self-test' -WorkingDirectory $installDir -Wait -PassThru
           if ($selfTest.ExitCode -ne 0) { throw "Installed VideoShelf self-test failed with exit code $($selfTest.ExitCode)." }
@@ -165,11 +224,11 @@ jobs:
           name: VideoShelf-windows
           path: ${{ env.VIDEOSHELF_PACKAGE }}
           if-no-files-found: error
-      - name: Upload tested Windows installer
+      - name: Upload tested Windows installer and icon
         uses: actions/upload-artifact@v4
         with:
           name: VideoShelf-installer
-          path: ${{ env.VIDEOSHELF_INSTALLER }}
+          path: ${{ env.VIDEOSHELF_INSTALLER_DIR }}
           if-no-files-found: error
       - name: Upload available screenshots
         uses: actions/upload-artifact@v4
