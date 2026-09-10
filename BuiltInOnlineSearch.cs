@@ -6,12 +6,14 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace VideoShelf {
 static class BuiltInOnlineSearch {
  sealed class SourceResult { public bool Failed; public List<OnlineResult> Results=new List<OnlineResult>(); }
+ sealed class AggregateResult { public List<SourceResult> Responses=new List<SourceResult>(); public bool DeadlineReached; }
  static readonly HttpClient http=CreateHttp();
  static readonly string[] Sources={
   "https://nyaa.si/?page=rss&q={query}&c=1_0&f=0",
@@ -34,43 +36,45 @@ static class BuiltInOnlineSearch {
   string normalized=Regex.Replace((query??"").Trim(),@"[^\p{L}\p{N}]+"," ").Trim();
   if(normalized.Length==0)normalized=(query??"").Trim();
 
-  var responses=new List<SourceResult>();
-  bool deadlineReached=false;
-
-  // Keep the aggregate deadline independent from request cancellation. On the
-  // .NET Framework HttpClient stack a cancellation callback can itself block
-  // while a DNS/TLS request is wedged. The UI must never wait for that cleanup.
+  // Isolate every legacy network call from the UI-facing aggregate. A wedged
+  // DNS/TLS request must not be able to keep Find online open indefinitely.
   var pending=Sources
    .Select(source=>Task.Run(()=>SearchSource(source,normalized)))
    .Concat(new[]{Task.Run(()=>SearchApiBay(normalized))})
    .ToList();
-  Task deadline=Task.Delay(TimeSpan.FromSeconds(11));
-  Task cancelled=Task.Delay(Timeout.Infinite,ct);
-
-  while(pending.Count>0){
-   Task completed=await Task.WhenAny(pending.Select(t=>(Task)t).Concat(new[]{deadline,cancelled})).ConfigureAwait(false);
-   if(object.ReferenceEquals(completed,cancelled)){
-    ct.ThrowIfCancellationRequested();
-   }
-   if(object.ReferenceEquals(completed,deadline)){
-    deadlineReached=true;
-    break;
-   }
-   var finished=(Task<SourceResult>)completed;
-   pending.Remove(finished);
-   try{responses.Add(await finished.ConfigureAwait(false));}
-   catch(OperationCanceledException){responses.Add(new SourceResult{Failed=true});}
-   catch{responses.Add(new SourceResult{Failed=true});}
-  }
+  AggregateResult aggregate=await CollectWithinDeadline(pending,TimeSpan.FromSeconds(11),ct).ConfigureAwait(false);
 
   ct.ThrowIfCancellationRequested();
+  var responses=aggregate.Responses;
   var combined=responses.SelectMany(r=>r.Results).Where(r=>r!=null&&r.Seeders>0&&!string.IsNullOrWhiteSpace(r.Link)).ToList();
   var result=combined
    .GroupBy(r=>string.IsNullOrWhiteSpace(r.Link)?r.Title:r.Link,StringComparer.OrdinalIgnoreCase)
    .Select(g=>g.OrderByDescending(r=>r.Seeders).First())
    .OrderByDescending(r=>r.Seeders).ThenByDescending(r=>r.Published).ThenBy(r=>r.Title,StringComparer.OrdinalIgnoreCase).Take(80).ToList();
-  if(result.Count==0&&((responses.Count==0&&deadlineReached)||(responses.Count>0&&responses.All(r=>r.Failed))))
+  if(result.Count==0&&((responses.Count==0&&aggregate.DeadlineReached)||(responses.Count>0&&responses.All(r=>r.Failed))))
    throw new InvalidOperationException("Built-in metadata sources are currently unavailable. You can retry or configure a custom source in Settings.");
+  return result;
+ }
+
+ // This aggregate intentionally does not cancel unfinished source requests when
+ // its wall-clock budget expires. On .NET Framework, HttpClient cancellation can
+ // synchronously block in DNS/TLS cleanup. We simply stop awaiting stragglers and
+ // retain whatever valid source results completed inside the budget.
+ static async Task<AggregateResult> CollectWithinDeadline(List<Task<SourceResult>> tasks,TimeSpan budget,CancellationToken ct){
+  var result=new AggregateResult();
+  var pending=new List<Task<SourceResult>>(tasks??new List<Task<SourceResult>>());
+  Task deadline=Task.Delay(budget);
+  Task cancelled=Task.Delay(Timeout.Infinite,ct);
+  while(pending.Count>0){
+   Task completed=await Task.WhenAny(pending.Select(t=>(Task)t).Concat(new[]{deadline,cancelled})).ConfigureAwait(false);
+   if(object.ReferenceEquals(completed,cancelled))ct.ThrowIfCancellationRequested();
+   if(object.ReferenceEquals(completed,deadline)){result.DeadlineReached=true;break;}
+   var finished=(Task<SourceResult>)completed;
+   pending.Remove(finished);
+   try{result.Responses.Add(await finished.ConfigureAwait(false));}
+   catch(OperationCanceledException){result.Responses.Add(new SourceResult{Failed=true});}
+   catch{result.Responses.Add(new SourceResult{Failed=true});}
+  }
   return result;
  }
 
@@ -81,6 +85,20 @@ static class BuiltInOnlineSearch {
   var row=rows[0];
   if(row.Seeders!=42||row.Leechers!=7||row.Size!=1073741824L||row.Resolution!="1080p"||!row.Link.StartsWith("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",StringComparison.OrdinalIgnoreCase))
    throw new InvalidOperationException("Built-in metadata parser self-test failed.");
+  DeadlineSelfTest();
+ }
+
+ static void DeadlineSelfTest(){
+  var valid=new SourceResult();
+  valid.Results.Add(new OnlineResult{Title="Deadline test",Link="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",Seeders=1});
+  var fast=Task.FromResult(valid);
+  var never=new TaskCompletionSource<SourceResult>();
+  var clock=Stopwatch.StartNew();
+  AggregateResult aggregate=CollectWithinDeadline(new List<Task<SourceResult>>{fast,never.Task},TimeSpan.FromMilliseconds(150),CancellationToken.None).GetAwaiter().GetResult();
+  clock.Stop();
+  if(clock.Elapsed>TimeSpan.FromSeconds(2))throw new InvalidOperationException("Built-in metadata deadline regression: a stalled source blocked the aggregate.");
+  if(!aggregate.DeadlineReached||aggregate.Responses.Count!=1||aggregate.Responses[0].Results.Count!=1)
+   throw new InvalidOperationException("Built-in metadata deadline regression: partial results were not preserved when a source stalled.");
  }
 
  static async Task<SourceResult> SearchSource(string source,string query){
