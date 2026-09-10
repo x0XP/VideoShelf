@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace VideoShelf {
 sealed partial class Shelf {
  bool finalPolishApplied;
- MockupFilter sourceVisual,categoryVisual,resolutionVisual,sortVisual;
+ MockupFilter sourceVisual,categoryVisual,resolutionVisual;
  InspectorMetadataView inspectorMetadataVisual;
 
  void ApplyFinalPolish(){
@@ -15,9 +15,7 @@ sealed partial class Shelf {
   sourceVisual=CreateFilter(sourceFilter);
   categoryVisual=CreateFilter(categoryFilter);
   resolutionVisual=CreateFilter(resolution);
-  sortVisual=CreateFilter(homeSort);
-
-  sourceFilter.Visible=false;categoryFilter.Visible=false;resolution.Visible=false;homeSort.Visible=false;
+  sourceFilter.Visible=false;categoryFilter.Visible=false;resolution.Visible=false;
 
   inspectorMetadataVisual=new InspectorMetadataView();
   inspectorMetadataVisual.RawText=inspectorMeta.Text;
@@ -27,7 +25,6 @@ sealed partial class Shelf {
 
   inspectorTitle.AutoEllipsis=false;
   inspectorTitle.TextAlign=ContentAlignment.TopLeft;
-
   LayoutFinalPolish();
  }
  MockupFilter CreateFilter(ComboBox combo){
@@ -41,11 +38,10 @@ sealed partial class Shelf {
   if(sourceVisual!=null)sourceVisual.SetBounds(496,13,150,40);
   if(categoryVisual!=null)categoryVisual.SetBounds(658,13,125,40);
   if(resolutionVisual!=null)resolutionVisual.SetBounds(795,13,140,40);
-  if(sortVisual!=null)sortVisual.SetBounds(700,101,160,32);
   if(inspectorMetadataVisual!=null){
    int w=Math.Max(0,inspector.ClientSize.Width-26);
-   int h=downloadVisual==null?220:Math.Max(105,downloadVisual.Top-360);
-   inspectorMetadataVisual.SetBounds(13,345,w,h);
+   int h=downloadVisual==null?220:Math.Max(105,downloadVisual.Top-371);
+   inspectorMetadataVisual.SetBounds(13,356,w,h);
    inspectorMetadataVisual.BringToFront();
   }
  }
