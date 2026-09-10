@@ -29,6 +29,26 @@ static class ScreenshotHarness {
   }
  }
 
+ public static void CaptureReZeroDetail(string outputPath){
+  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-detail-screenshot-"+Guid.NewGuid().ToString("N"));
+  try{
+   Directory.CreateDirectory(root);
+   FolderNaming.CreateCollection(root,"re:zero");
+   Application.EnableVisualStyles();
+   Application.SetCompatibleTextRenderingDefault(false);
+   using(var shelf=new Shelf()){
+    PrepareWindow(shelf);
+    shelf.PrepareScreenshotLibrary(root);
+    if(!shelf.OpenScreenshotCollection("re:zero"))throw new Exception("VideoShelf did not open the real re:zero collection view correctly.");
+    Settle(shelf);
+    SaveWindow(shelf,outputPath);
+   }
+   Verify(outputPath,5000);
+  }finally{
+   try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}
+  }
+ }
+
  public static void CaptureOnlineResults(string displayName,string query,string torznabUrl,string outputPath,int expectedResults){
   string root=Path.Combine(Path.GetTempPath(),"VideoShelf-online-screenshot-"+Guid.NewGuid().ToString("N"));
   try{
@@ -123,6 +143,19 @@ sealed partial class Shelf {
   return person.Photo!=null;
  }
 
+ internal bool OpenScreenshotCollection(string displayName){
+  Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));
+  if(person==null)return false;
+  OpenPerson(person);
+  DateTime deadline=DateTime.UtcNow.AddSeconds(5);
+  while(DateTime.UtcNow<deadline){
+   Application.DoEvents();
+   if(current==person&&detail.Visible&&localDetail.Visible&&status.Text.IndexOf("local videos",StringComparison.OrdinalIgnoreCase)>=0)return true;
+   Thread.Sleep(50);
+  }
+  return current==person&&detail.Visible&&localDetail.Visible;
+ }
+
  internal bool PrepareOnlineScreenshot(string displayName,string query,string torznabUrl,int expectedResults){
   Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));
   if(person==null)return false;
@@ -143,7 +176,7 @@ sealed partial class Shelf {
   onlineSettings=source;
   onlineResults=found;
   thumbnailsLoading=false;
-  thumbnailsPaused=true; // The CI proof validates live torrent metadata separately from optional artwork retrieval.
+  thumbnailsPaused=true;
   ClearSearch();
   SetSort(true);
   back.Visible=true;
