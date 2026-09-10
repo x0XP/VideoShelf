@@ -50,7 +50,7 @@ jobs:
             'https://nyaa.mom/?page=rss&q={query}&c=1_2&f=0',
             'https://nyaa.si/?page=rss&q={query}&c=1_2&f=0',
             'https://stremthrufortheweebs.midnightignite.me/v0/torznab/api',
-            'https://www.torlock.com/torznab/api'
+            'https://www.torlock2.com/torznab/api'
           )
           $success = $false
           foreach ($source in $sources) {
@@ -79,7 +79,8 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-melody-marks-online.png'
           $sources = @(
-            'https://www.torlock.com/torznab/api',
+            'https://www.torlock2.com/torznab/api?cat=6000',
+            'https://www.torlock2.com/torznab/api',
             'https://stremthrufortheweebs.midnightignite.me/v0/torznab/api'
           )
           $success = $false
