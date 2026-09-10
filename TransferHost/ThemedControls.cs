@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Runtime.InteropServices;
 
 namespace VideoShelf.TransferHost;
@@ -138,33 +139,122 @@ internal sealed class SeekBar : Control
     }
 }
 
-internal sealed class DarkComboBox : ComboBox
+internal sealed class DarkComboBox : Control
 {
+    internal sealed class ItemCollection : IEnumerable<object>
+    {
+        readonly DarkComboBox owner;
+        readonly List<object> items = new();
+        internal ItemCollection(DarkComboBox owner) { this.owner = owner; }
+        public int Count => items.Count;
+        public object this[int index] => items[index];
+        public int Add(object item) { items.Add(item); owner.Invalidate(); return items.Count - 1; }
+        public void Clear() { items.Clear(); owner.SelectedIndex = -1; owner.Invalidate(); }
+        public IEnumerator<object> GetEnumerator() => items.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    readonly ContextMenuStrip menu = new();
+    int selectedIndex = -1;
+    bool hot;
+    public ItemCollection Items { get; }
     public string EmptyText { get; set; } = "Resolving torrent videos…";
+    public event EventHandler? SelectedIndexChanged;
+    public int SelectedIndex
+    {
+        get => selectedIndex;
+        set
+        {
+            int next = value >= 0 && value < Items.Count ? value : -1;
+            if (selectedIndex == next) return;
+            selectedIndex = next;
+            Invalidate();
+            SelectedIndexChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public DarkComboBox()
     {
-        DropDownStyle = ComboBoxStyle.DropDownList;
-        DrawMode = DrawMode.OwnerDrawFixed;
-        ItemHeight = 27;
-        FlatStyle = FlatStyle.Flat;
+        Items = new ItemCollection(this);
+        Height = 31;
+        Cursor = Cursors.Hand;
+        TabStop = true;
+        Font = new Font("Segoe UI", 9.5f);
         BackColor = Theme.Panel;
         ForeColor = Theme.Text;
-        Font = new Font("Segoe UI", 9.5f);
-        NativeTheme.Apply(this);
+        menu.ShowImageMargin = false;
+        menu.BackColor = Theme.Panel;
+        menu.ForeColor = Theme.Text;
+        menu.Renderer = new ToolStripProfessionalRenderer(new DarkDropDownColors());
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
     }
 
-    protected override void OnDrawItem(DrawItemEventArgs e)
+    public void BeginUpdate() { }
+    public void EndUpdate() { Invalidate(); }
+
+    protected override void OnClick(EventArgs e)
     {
-        bool selected = (e.State & DrawItemState.Selected) != 0;
-        using (var b = new SolidBrush(selected ? Color.FromArgb(24, 64, 105) : Theme.Panel)) e.Graphics.FillRectangle(b, e.Bounds);
-        string text = e.Index >= 0 && e.Index < Items.Count ? GetItemText(Items[e.Index]) : EmptyText;
-        TextRenderer.DrawText(e.Graphics, text, Font,
-            new Rectangle(e.Bounds.X + 9, e.Bounds.Y, Math.Max(1, e.Bounds.Width - 18), e.Bounds.Height),
-            Enabled ? (selected ? Color.White : Theme.Text) : Theme.Muted,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-        if ((e.State & DrawItemState.Focus) != 0) e.DrawFocusRectangle();
+        base.OnClick(e);
+        if (!Enabled || Items.Count == 0) return;
+        menu.Items.Clear();
+        for (int i = 0; i < Items.Count; i++)
+        {
+            int index = i;
+            var item = new ToolStripMenuItem(Convert.ToString(Items[i]) ?? "") { Checked = i == SelectedIndex, AutoSize = false, Width = Math.Max(180, Width - 4), Height = 30, BackColor = Theme.Panel, ForeColor = Theme.Text };
+            item.Click += (_, _) => SelectedIndex = index;
+            menu.Items.Add(item);
+        }
+        menu.MinimumSize = new Size(Width, 0);
+        menu.Show(this, new Point(0, Height));
     }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        var rect = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+        using (var b = new SolidBrush(hot && Enabled ? Color.FromArgb(16, 29, 39) : Theme.Panel)) g.FillRectangle(b, rect);
+        using (var p = new Pen(hot && Enabled ? Color.FromArgb(63, 94, 119) : Theme.Outline)) g.DrawRectangle(p, rect);
+        string text = SelectedIndex >= 0 && SelectedIndex < Items.Count ? Convert.ToString(Items[SelectedIndex]) ?? "" : EmptyText;
+        TextRenderer.DrawText(g, text, Font, new Rectangle(10, 0, Math.Max(1, Width - 42), Height), Enabled ? Theme.Text : Theme.Muted,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+        int cx = Width - 18, cy = Height / 2;
+        using (var p = new Pen(Enabled ? Color.FromArgb(185, 203, 220) : Theme.Muted, 1.3f))
+        { g.DrawLine(p, cx - 4, cy - 2, cx, cy + 2); g.DrawLine(p, cx, cy + 2, cx + 4, cy - 2); }
+        if (Focused) ControlPaint.DrawFocusRectangle(g, new Rectangle(4, 4, Math.Max(1, Width - 8), Math.Max(1, Height - 8)));
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { hot = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { hot = false; Invalidate(); base.OnMouseLeave(e); }
+    protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (!Enabled) { base.OnKeyDown(e); return; }
+        if (e.KeyCode == Keys.Down && Items.Count > 0) { SelectedIndex = Math.Min(Items.Count - 1, SelectedIndex + 1); e.Handled = true; }
+        else if (e.KeyCode == Keys.Up && Items.Count > 0) { SelectedIndex = SelectedIndex <= 0 ? 0 : SelectedIndex - 1; e.Handled = true; }
+        else if ((e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) && Items.Count > 0) { OnClick(EventArgs.Empty); e.Handled = true; }
+        base.OnKeyDown(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) menu.Dispose();
+        base.Dispose(disposing);
+    }
+}
+
+internal sealed class DarkDropDownColors : ProfessionalColorTable
+{
+    public DarkDropDownColors() { UseSystemColors = false; }
+    public override Color ToolStripDropDownBackground => Theme.Panel;
+    public override Color MenuBorder => Theme.Outline;
+    public override Color MenuItemBorder => Color.FromArgb(42, 78, 106);
+    public override Color MenuItemSelected => Color.FromArgb(20, 48, 72);
+    public override Color MenuItemSelectedGradientBegin => Color.FromArgb(20, 48, 72);
+    public override Color MenuItemSelectedGradientEnd => Color.FromArgb(20, 48, 72);
+    public override Color ImageMarginGradientBegin => Theme.Panel;
+    public override Color ImageMarginGradientMiddle => Theme.Panel;
+    public override Color ImageMarginGradientEnd => Theme.Panel;
 }
 
 internal sealed class DarkListView : ListView
