@@ -10,7 +10,7 @@ sealed class MockupFilter : Control {
  bool hot;
  public MockupFilter(ComboBox source){
   this.source=source;Cursor=Cursors.Hand;TabStop=true;SetStyle(ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw|ControlStyles.UserPaint|ControlStyles.Selectable,true);
-  menu.BackColor=Color.FromArgb(10,20,29);menu.ForeColor=XdolfTheme.Text;menu.ShowImageMargin=false;menu.RenderMode=ToolStripRenderMode.System;
+  menu.BackColor=Color.FromArgb(8,17,25);menu.ForeColor=XdolfTheme.Text;menu.ShowImageMargin=false;menu.ShowCheckMargin=false;menu.Padding=new Padding(1);menu.Renderer=new ToolStripProfessionalRenderer(new DarkMenuColors());
   source.SelectedIndexChanged+=delegate{Invalidate();};source.TextChanged+=delegate{Invalidate();};
  }
  public string DisplayText {get{return source.SelectedItem==null?(source.Text??""):Convert.ToString(source.SelectedItem);}}
@@ -23,11 +23,32 @@ sealed class MockupFilter : Control {
   if(Focused)ControlPaint.DrawFocusRectangle(g,new Rectangle(4,4,Width-8,Height-8));
  }
  void OpenMenu(){
-  menu.Items.Clear();for(int i=0;i<source.Items.Count;i++){string text=Convert.ToString(source.Items[i]);var item=new ToolStripMenuItem(text){Tag=i,Checked=i==source.SelectedIndex,CheckOnClick=false,BackColor=Color.FromArgb(10,20,29),ForeColor=XdolfTheme.Text};item.Click+=delegate(object sender,EventArgs e){var clicked=sender as ToolStripMenuItem;if(clicked!=null)source.SelectedIndex=(int)clicked.Tag;};menu.Items.Add(item);}if(menu.Items.Count>0)menu.Show(this,new Point(0,Height));
+  menu.Items.Clear();menu.MinimumSize=new Size(Width,0);
+  for(int i=0;i<source.Items.Count;i++){
+   string text=Convert.ToString(source.Items[i]);
+   var item=new ToolStripMenuItem(text){Tag=i,Checked=i==source.SelectedIndex,CheckOnClick=false,AutoSize=false,Width=Math.Max(120,Width-4),Height=30,BackColor=Color.FromArgb(8,17,25),ForeColor=XdolfTheme.Text,Padding=new Padding(10,0,8,0)};
+   item.Click+=delegate(object sender,EventArgs e){var clicked=sender as ToolStripMenuItem;if(clicked!=null)source.SelectedIndex=(int)clicked.Tag;};menu.Items.Add(item);
+  }
+  if(menu.Items.Count>0)menu.Show(this,new Point(0,Height));
  }
  protected override void OnClick(EventArgs e){base.OnClick(e);if(Enabled)OpenMenu();}
  protected override void OnMouseEnter(EventArgs e){hot=true;Invalidate();base.OnMouseEnter(e);}protected override void OnMouseLeave(EventArgs e){hot=false;Invalidate();base.OnMouseLeave(e);}protected override void OnGotFocus(EventArgs e){Invalidate();base.OnGotFocus(e);}protected override void OnLostFocus(EventArgs e){Invalidate();base.OnLostFocus(e);}protected override void OnKeyDown(KeyEventArgs e){if(e.KeyCode==Keys.Enter||e.KeyCode==Keys.Space||e.KeyCode==Keys.Down){OpenMenu();e.Handled=true;}base.OnKeyDown(e);}
  protected override void Dispose(bool disposing){if(disposing)menu.Dispose();base.Dispose(disposing);}
+}
+
+sealed class DarkMenuColors : ProfessionalColorTable {
+ public DarkMenuColors(){UseSystemColors=false;}
+ public override Color ToolStripDropDownBackground { get { return Color.FromArgb(8,17,25); } }
+ public override Color MenuBorder { get { return XdolfTheme.Outline; } }
+ public override Color MenuItemBorder { get { return Color.FromArgb(42,78,106); } }
+ public override Color MenuItemSelected { get { return Color.FromArgb(20,48,72); } }
+ public override Color MenuItemSelectedGradientBegin { get { return Color.FromArgb(20,48,72); } }
+ public override Color MenuItemSelectedGradientEnd { get { return Color.FromArgb(20,48,72); } }
+ public override Color ImageMarginGradientBegin { get { return Color.FromArgb(8,17,25); } }
+ public override Color ImageMarginGradientMiddle { get { return Color.FromArgb(8,17,25); } }
+ public override Color ImageMarginGradientEnd { get { return Color.FromArgb(8,17,25); } }
+ public override Color SeparatorDark { get { return XdolfTheme.Outline; } }
+ public override Color SeparatorLight { get { return XdolfTheme.Outline; } }
 }
 
 sealed class InspectorMetadataView : Control {
