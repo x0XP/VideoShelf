@@ -38,10 +38,8 @@ jobs:
           }
           "VIDEOSHELF_REAL_LIBRARY=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Render View videos from genuine media
-        shell: powershell
-        run: |
-          & .\VideoShelf.exe --screenshot-library-videos $env:VIDEOSHELF_REAL_LIBRARY 'Blender Demos' "$env:RUNNER_TEMP\VideoShelf-real-videos.png" 3
-          if ($LASTEXITCODE -ne 0) { throw "VideoShelf real-media screenshot failed with exit code $LASTEXITCODE" }
+        shell: cmd
+        run: VideoShelf.exe --screenshot-library-videos "%VIDEOSHELF_REAL_LIBRARY%" "Blender Demos" "%RUNNER_TEMP%\VideoShelf-real-videos.png" 3
       - name: Verify screenshots
         shell: powershell
         run: |
