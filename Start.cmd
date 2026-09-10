@@ -7,7 +7,18 @@ if not exist "%CSC%" (
  echo Microsoft .NET Framework 4.x is required. Enable it in Windows Features.
  exit /b 1
 )
-"%CSC%" /nologo /target:winexe /optimize+ /out:"VideoShelf.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Xml.Linq.dll /reference:System.Security.dll "AppDataPaths.cs" "XdolfTheme.cs" "MockupControls.cs" "MockupActionButton.cs" "MockupFilter.cs" "FolderManagement.cs" "TransferBridge.cs" "VideoShelf.cs" "ScreenshotHarness.cs" "Shelf.Core.cs" "Shelf.Layout.cs" "Shelf.Visuals.cs" "Shelf.Polish.cs" "Shelf.Library.cs" "Shelf.Online.cs" "PortraitLookup.cs" "OnlineSearch.cs" "OnlineThumbnailLookup.cs"
+
+if not exist "VideoShelf.ico.b64" (
+ echo VideoShelf icon source is missing.
+ exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$b=[Convert]::FromBase64String((Get-Content -Raw 'VideoShelf.ico.b64')); [IO.File]::WriteAllBytes((Join-Path (Get-Location) 'VideoShelf.ico'),$b)"
+if errorlevel 1 (
+ echo VideoShelf icon generation failed.
+ exit /b 1
+)
+
+"%CSC%" /nologo /target:winexe /optimize+ /win32icon:"VideoShelf.ico" /out:"VideoShelf.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Xml.Linq.dll /reference:System.Security.dll "AppDataPaths.cs" "AppBrand.cs" "XdolfTheme.cs" "MockupControls.cs" "MockupActionButton.cs" "MockupFilter.cs" "FolderManagement.cs" "TransferBridge.cs" "VideoShelf.cs" "ScreenshotHarness.cs" "Shelf.Core.cs" "Shelf.Layout.cs" "Shelf.Visuals.cs" "Shelf.Polish.cs" "Shelf.Library.cs" "Shelf.Online.cs" "PortraitLookup.cs" "OnlineSearch.cs" "OnlineThumbnailLookup.cs"
 if errorlevel 1 (
  echo Build failed.
  exit /b 1
