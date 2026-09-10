@@ -33,7 +33,7 @@ jobs:
           $success = $false
           foreach ($source in $sources) {
             if (Test-Path $output) { Remove-Item $output -Force }
-            $argumentList = @('--screenshot-online','"re:zero"','"re zero"',$source,$output,'3')
+            $argumentList = @('--screenshot-online','"re:zero"','"re zero"',$source,$output,'1')
             $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
             if (-not $process.WaitForExit(20000)) {
               Write-Host "Metadata source timed out: $source"
@@ -47,7 +47,7 @@ jobs:
               break
             }
           }
-          if (-not $success) { throw 'No public Torznab source returned enough live seeded re:zero results for the screenshot.' }
+          if (-not $success) { throw 'No public Torznab source returned a live seeded re:zero result for the screenshot.' }
       - name: Verify screenshots
         shell: powershell
         run: |
