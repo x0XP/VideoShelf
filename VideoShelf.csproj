@@ -27,6 +27,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AppDataPaths.cs" />
+    <Compile Include="FolderManagement.cs" />
     <Compile Include="VideoShelf.cs" />
     <Compile Include="Shelf.Core.cs" />
     <Compile Include="Shelf.Library.cs" />
