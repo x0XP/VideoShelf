@@ -63,12 +63,25 @@ sealed class InspectorMetadataView : Control {
  }
 }
 
-sealed class DarkFlowLayoutPanel : FlowLayoutPanel {
- const int SB_VERT=1;const int WM_NCPAINT=0x85,WM_SIZE=0x5,WM_VSCROLL=0x115;
- [System.Runtime.InteropServices.DllImport("user32.dll")]static extern bool ShowScrollBar(IntPtr hWnd,int wBar,bool bShow);
- public DarkFlowLayoutPanel(){DoubleBuffered=true;}
- protected override void WndProc(ref Message m){base.WndProc(ref m);if(IsHandleCreated&&(m.Msg==WM_NCPAINT||m.Msg==WM_SIZE||m.Msg==WM_VSCROLL))ShowScrollBar(Handle,SB_VERT,false);}
- protected override void OnMouseWheel(MouseEventArgs e){int current=-AutoScrollPosition.Y;int next=Math.Max(0,current-(e.Delta/120)*72);AutoScrollPosition=new Point(0,next);if(IsHandleCreated)ShowScrollBar(Handle,SB_VERT,false);}
- protected override void OnLayout(LayoutEventArgs levent){base.OnLayout(levent);if(IsHandleCreated)ShowScrollBar(Handle,SB_VERT,false);}
+sealed class SearchScrollRail : Control {
+ readonly ScrollableControl target;
+ bool dragging,hot;
+ int dragOffset;
+ public SearchScrollRail(ScrollableControl target){
+  this.target=target;Cursor=Cursors.Hand;TabStop=false;BackColor=XdolfTheme.Background;SetStyle(ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw|ControlStyles.UserPaint,true);
+  target.Scroll+=delegate{Invalidate();};target.MouseWheel+=delegate{Invalidate();};target.ControlAdded+=delegate{Invalidate();};target.ControlRemoved+=delegate{Invalidate();};target.Resize+=delegate{Invalidate();};
+ }
+ int ContentHeight(){int total=target.Padding.Vertical;foreach(Control c in target.Controls)total+=c.Height+c.Margin.Vertical;return Math.Max(target.ClientSize.Height,total);}
+ int MaxScroll(){return Math.Max(0,ContentHeight()-target.ClientSize.Height);}
+ int CurrentScroll(){int max=MaxScroll();return Math.Max(0,Math.Min(max,-target.AutoScrollPosition.Y));}
+ Rectangle Thumb(){int max=MaxScroll();if(max<=0||Height<=12)return Rectangle.Empty;int track=Math.Max(1,Height-8),content=ContentHeight();int thumb=Math.Max(38,Math.Min(track,(int)Math.Round(track*(target.ClientSize.Height/(double)Math.Max(1,content)))));int travel=Math.Max(0,track-thumb);int y=4+(max==0?0:(int)Math.Round(travel*(CurrentScroll()/(double)max)));return new Rectangle(4,y,Math.Max(4,Width-8),thumb);}
+ void SetScroll(int value){int max=MaxScroll();value=Math.Max(0,Math.Min(max,value));target.AutoScrollPosition=new Point(0,value);Invalidate();target.Invalidate();}
+ protected override void OnPaint(PaintEventArgs e){
+  base.OnPaint(e);using(var b=new SolidBrush(Color.FromArgb(6,13,20)))e.Graphics.FillRectangle(b,ClientRectangle);var thumb=Thumb();if(thumb.IsEmpty)return;using(var track=new SolidBrush(Color.FromArgb(11,23,32)))UiPaint.FillRound(e.Graphics,track,new Rectangle(5,3,Math.Max(3,Width-10),Math.Max(4,Height-6)),4);using(var b=new SolidBrush(hot||dragging?Color.FromArgb(83,116,143):Color.FromArgb(55,80,101)))UiPaint.FillRound(e.Graphics,b,thumb,4);
+ }
+ protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);if(e.Button!=MouseButtons.Left)return;var thumb=Thumb();if(thumb.IsEmpty)return;if(thumb.Contains(e.Location)){dragging=true;dragOffset=e.Y-thumb.Y;Capture=true;}else{int max=MaxScroll();int targetY=e.Y-thumb.Height/2;int travel=Math.Max(1,Height-8-thumb.Height);SetScroll((int)Math.Round(max*(Math.Max(0,Math.Min(travel,targetY-4))/(double)travel)));}}
+ protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);hot=true;if(!dragging)return;var thumb=Thumb();int max=MaxScroll();int travel=Math.Max(1,Height-8-thumb.Height);int y=Math.Max(0,Math.Min(travel,e.Y-dragOffset-4));SetScroll((int)Math.Round(max*(y/(double)travel)));}
+ protected override void OnMouseUp(MouseEventArgs e){dragging=false;Capture=false;Invalidate();base.OnMouseUp(e);}protected override void OnMouseEnter(EventArgs e){hot=true;Invalidate();base.OnMouseEnter(e);}protected override void OnMouseLeave(EventArgs e){if(!dragging)hot=false;Invalidate();base.OnMouseLeave(e);}
+ protected override void OnMouseWheel(MouseEventArgs e){SetScroll(CurrentScroll()-(e.Delta/120)*94);base.OnMouseWheel(e);}
 }
 }
