@@ -6,6 +6,8 @@ using System.Windows.Forms;
 namespace VideoShelf {
 sealed partial class Shelf {
  MockupActionButton downloadVisual,streamVisual;
+ Button chromeMin,chromeMax,chromeClose;
+ bool shellChromePrepared;
 
  protected override void OnShown(EventArgs e){
   base.OnShown(e);
@@ -45,12 +47,66 @@ sealed partial class Shelf {
   body.Anchor=AnchorStyles.Top|AnchorStyles.Bottom|AnchorStyles.Left|AnchorStyles.Right;
   body.SendToBack();
 
+  EnsureShellChrome();
   navHome.Top=116;navSearch.Top=170;navCollections.Top=224;navDownloads.Top=278;navStreaming.Top=332;navSettings.Top=386;
   LayoutSearchSurface();
   if(homePolishApplied)LayoutHomePolish();
   if(homeDashboardReady)LayoutDashboardHome();
   if(finalPolishApplied)LayoutFinalPolish();
   body.PerformLayout();mainHost.PerformLayout();searchView.PerformLayout();
+ }
+ void EnsureShellChrome(){
+  int navWidth=Math.Max(160,sidebar.ClientSize.Width-4);
+  foreach(var n in new[]{navHome,navSearch,navCollections,navDownloads,navStreaming,navSettings}){
+   n.Left=0;n.Width=navWidth;n.Anchor=AnchorStyles.Top|AnchorStyles.Left;
+  }
+  sidebar.Invalidate();
+
+  if(!shellChromePrepared){
+   Panel bar=Controls.OfType<Panel>().FirstOrDefault(p=>p.Dock==DockStyle.Top&&p.Height==34);
+   if(bar!=null){
+    chromeMin=bar.Controls.OfType<Button>().FirstOrDefault(b=>b.Text=="—");
+    chromeMax=bar.Controls.OfType<Button>().FirstOrDefault(b=>b.Text=="□");
+    chromeClose=bar.Controls.OfType<Button>().FirstOrDefault(b=>b.Text=="×");
+    if(chromeMin!=null&&chromeMax!=null&&chromeClose!=null){
+     PrepareCaptionButton(chromeMin);PrepareCaptionButton(chromeMax);PrepareCaptionButton(chromeClose);
+     chromeMin.Paint+=PaintMinimizeGlyph;chromeMax.Paint+=PaintMaximizeGlyph;chromeClose.Paint+=PaintCloseGlyph;
+     bar.Resize+=delegate{LayoutCaptionButtons();};
+     shellChromePrepared=true;
+    }
+   }
+  }
+  LayoutCaptionButtons();
+ }
+ void PrepareCaptionButton(Button button){
+  button.Text="";button.TabStop=false;button.AutoSize=false;button.Width=46;button.Height=34;
+  button.Anchor=AnchorStyles.Top|AnchorStyles.Right;button.FlatStyle=FlatStyle.Flat;button.UseVisualStyleBackColor=false;
+  button.FlatAppearance.BorderSize=0;button.Margin=Padding.Empty;button.Padding=Padding.Empty;
+ }
+ void LayoutCaptionButtons(){
+  if(chromeMin==null||chromeMax==null||chromeClose==null||chromeClose.Parent==null)return;
+  int right=chromeClose.Parent.ClientSize.Width,bw=46;
+  chromeClose.SetBounds(right-bw,0,bw,34);
+  chromeMax.SetBounds(right-bw*2,0,bw,34);
+  chromeMin.SetBounds(right-bw*3,0,bw,34);
+  chromeMin.Invalidate();chromeMax.Invalidate();chromeClose.Invalidate();
+ }
+ void PaintMinimizeGlyph(object sender,PaintEventArgs e){
+  Button b=(Button)sender;int cx=b.ClientSize.Width/2,cy=b.ClientSize.Height/2;
+  using(var p=new Pen(Color.FromArgb(224,232,240),1f))e.Graphics.DrawLine(p,cx-5,cy+2,cx+5,cy+2);
+ }
+ void PaintMaximizeGlyph(object sender,PaintEventArgs e){
+  Button b=(Button)sender;int cx=b.ClientSize.Width/2,cy=b.ClientSize.Height/2;
+  using(var p=new Pen(Color.FromArgb(224,232,240),1f)){
+   if(WindowState==FormWindowState.Maximized){e.Graphics.DrawRectangle(p,cx-3,cy-5,8,8);e.Graphics.DrawRectangle(p,cx-5,cy-3,8,8);}
+   else e.Graphics.DrawRectangle(p,cx-5,cy-5,10,10);
+  }
+ }
+ void PaintCloseGlyph(object sender,PaintEventArgs e){
+  Button b=(Button)sender;int cx=b.ClientSize.Width/2,cy=b.ClientSize.Height/2;
+  using(var p=new Pen(Color.FromArgb(232,238,244),1.2f)){
+   e.Graphics.DrawLine(p,cx-5,cy-5,cx+5,cy+5);e.Graphics.DrawLine(p,cx+5,cy-5,cx-5,cy+5);
+  }
  }
  void LayoutSearchSurface(){
   ApplyExtendedVisuals();EnsureMockupActions();
