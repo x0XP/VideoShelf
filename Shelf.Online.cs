@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,62 +9,49 @@ using System.Threading.Tasks;
 
 namespace VideoShelf {
 sealed partial class Shelf {
- void ShowOnline(){
-  if(current==null)return;onlineMode=true;ClearSearch();SetSort(true);localDetail.Visible=false;onlineDetail.Visible=true;onlineDetail.BringToFront();subtitle.Text="Online results for "+current.Name+" • metadata only";onlineSettings=OnlineSettings.Load();
-  if(onlineQuery.Text.Trim().Length==0)onlineQuery.Text=current.Name;
-  if(!onlineSettings.Configured){onlineError="Configure an online Torznab source to search.";RenderOnline();return;}
-  if(!onlineSearching&&(onlineResults.Count==0||!onlineQueryFor.Equals(onlineQuery.Text.Trim(),StringComparison.OrdinalIgnoreCase)))SearchOnline(onlineQuery.Text,true);else RenderOnline();
- }
  void ConfigureOnline(){
-  using(var d=new OnlineSourceDialog(onlineSettings))if(d.ShowDialog(this)==DialogResult.OK&&d.Value!=null){onlineSettings=d.Value;try{onlineSettings.Save();}catch(Exception ex){MessageBox.Show(this,"Could not save online source settings.\n\n"+ex.Message,"VideoShelf");return;}onlineResults.Clear();onlineQueryFor="";onlineError="";if(onlineMode&&onlineSettings.Configured)SearchOnline(onlineQuery.Text,true);else if(onlineMode)RenderOnline();}
+  onlineSettings=OnlineSettings.Load();using(var d=new OnlineSourceDialog(onlineSettings))if(d.ShowDialog(this)==DialogResult.OK&&d.Value!=null){onlineSettings=d.Value;try{onlineSettings.Save();}catch(Exception ex){MessageBox.Show(this,"Could not save online source settings.\n\n"+ex.Message,"VideoShelf");return;}onlineResults.Clear();selectedOnline=null;onlineQueryFor="";onlineError="";if(section==ShellSection.Search&&onlineSettings.Configured)SearchOnline(onlineQuery.Text,true);else if(section==ShellSection.Search)RenderOnline();if(section==ShellSection.Settings)ShowSettings();}
  }
  async void SearchOnline(string query,bool showStatus){
-  onlineSettings=OnlineSettings.Load();if(!onlineSettings.Configured){onlineError="Configure an online Torznab source to search.";if(showStatus)RenderOnline();return;}
-  query=query.Trim();if(query.Length==0){onlineError="Enter a search query.";if(showStatus)RenderOnline();return;}
-  onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;var ct=onlineScan.Token;Person target=current;onlineSearching=true;onlineError="";onlineQueryFor=query;if(showStatus&&onlineMode)RenderOnline();
-  try{
-   var found=await TorznabSearch.Search(query,onlineSettings,ct);if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults=found;
-  }catch(OperationCanceledException){return;}catch(Exception ex){if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults.Clear();onlineError=ex.Message;}
-  finally{if(!ct.IsCancellationRequested&&!IsDisposed&&target==current){onlineSearching=false;if(onlineMode)RenderOnline();else Render();}}
+  onlineSettings=OnlineSettings.Load();query=(query??"").Trim();if(query.Length==0){onlineError="Enter a search query.";if(showStatus){ShowSearch();RenderOnline();}return;}if(!onlineSettings.Configured){onlineError="Configure an online metadata source first.";if(showStatus){ShowSearch();RenderOnline();}return;}
+  onlineScan.Cancel();onlineScan.Dispose();onlineScan=new System.Threading.CancellationTokenSource();thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();thumbnailAttempted.Clear();thumbnailsLoading=false;thumbnailsPaused=false;var ct=onlineScan.Token;Person target=current;onlineSearching=true;onlineError="";onlineQueryFor=query;if(showStatus){ShowSection(searchView,ShellSection.Search);RenderOnline();}
+  try{var found=await TorznabSearch.Search(query,onlineSettings,ct);if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults=found.Where(r=>r.Seeders>0).ToList();selectedOnline=onlineResults.FirstOrDefault();RefreshSourceFilter();}
+  catch(OperationCanceledException){return;}catch(Exception ex){if(ct.IsCancellationRequested||IsDisposed||target!=current)return;onlineResults.Clear();selectedOnline=null;onlineError=ex.Message;}
+  finally{if(!ct.IsCancellationRequested&&!IsDisposed&&target==current){onlineSearching=false;if(section==ShellSection.Search)RenderOnline();else if(current!=null)RenderLocal();}}
  }
- void Render(){
-  if(onlineMode){RenderOnline();return;}
-  string q=search.Text.Trim();if(current==null){ClearCards();var selected=people.Where(p=>p.Name.IndexOf(q,StringComparison.OrdinalIgnoreCase)>=0);selected=sort.SelectedIndex==1?selected.OrderByDescending(p=>p.Name,StringComparer.OrdinalIgnoreCase):selected.OrderBy(p=>p.Name,StringComparer.OrdinalIgnoreCase);cards.SuspendLayout();foreach(var p in selected){var card=new Portrait(p);card.Click+=delegate{OpenPerson(card.Person);};AttachPhotoMenu(card);tips.SetToolTip(card,p.Name+(p.PhotoError.Length>0?"\n"+p.PhotoError:"\nRight-click for portrait options"));cards.Controls.Add(card);}cards.ResumeLayout();status.Text=cards.Controls.Count+" people"+(cards.Controls.Count==0?" • No matching folders. Choose a parent folder containing people's folders.":" • Click a portrait to explore videos");}
-  else{var selected=videos.Where(v=>v.Name.IndexOf(q,StringComparison.OrdinalIgnoreCase)>=0||v.Relative.IndexOf(q,StringComparison.OrdinalIgnoreCase)>=0);selected=sort.SelectedIndex==2?selected.OrderByDescending(v=>v.Modified):sort.SelectedIndex==1?selected.OrderByDescending(v=>v.Name,StringComparer.OrdinalIgnoreCase):selected.OrderBy(v=>v.Name,StringComparer.OrdinalIgnoreCase);files.BeginUpdate();files.Items.Clear();foreach(var v in selected){var item=new ListViewItem(new[]{v.Name,Path.GetExtension(v.Path).TrimStart('.').ToUpperInvariant(),SizeText(v.Size),v.Modified.ToString("dd MMM yyyy HH:mm"),v.Relative});item.Tag=v;files.Items.Add(item);}files.EndUpdate();status.Text=files.Items.Count+" local videos"+(files.Items.Count==0?" • No matching videos in this folder or its subfolders.":" • Double-click a video to play");if(!onlineSearching&&onlineResults.Count>0)status.Text+=" • "+onlineResults.Count+" seeded online matches ready";else if(onlineSearching)status.Text+=" • Checking online metadata…";}
-  if(skipped>0)status.Text+=" • Some unreadable items were skipped";if(current==null){if(fetchingPortraits)status.Text+=" • Finding portraits…";int missing=people.Count(p=>p.PhotoError.Length>0);if(missing>0)status.Text+=" • "+missing+" portraits unavailable (right-click for options)";}
+ void RefreshSourceFilter(){
+  string old=sourceFilter.SelectedItem==null?"All sources":sourceFilter.SelectedItem.ToString();suppress=true;sourceFilter.Items.Clear();sourceFilter.Items.Add("All sources");foreach(string source in onlineResults.Where(r=>r.Seeders>0).Select(r=>DisplaySource(r.Source)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))sourceFilter.Items.Add(source);int index=sourceFilter.Items.IndexOf(old);sourceFilter.SelectedIndex=index>=0?index:0;suppress=false;
  }
- void ResetOnlineThumbnailImages(){
-  onlineThumbs.Images.Clear();using(Image placeholder=MakeOnlinePlaceholder())onlineThumbs.Images.Add("__placeholder",placeholder);
- }
- async void StartThumbnailLoading(IEnumerable<OnlineResult> displayed){
-  if(thumbnailsLoading||thumbnailsPaused||onlineSearching||!onlineMode||IsDisposed)return;
-  var pending=displayed.Where(r=>r.Seeders>0).GroupBy(r=>OnlineThumbnailLookup.CacheKey(r.Title),StringComparer.OrdinalIgnoreCase).Select(g=>g.First()).Where(r=>!thumbnailAttempted.Contains(OnlineThumbnailLookup.CacheKey(r.Title))&&!onlineThumbs.Images.ContainsKey(OnlineThumbnailLookup.CacheKey(r.Title))).Take(40).ToArray();
-  if(pending.Length==0)return;
-  thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();var ct=thumbnailScan.Token;Person target=current;thumbnailsLoading=true;if(onlineMode)status.Text+=" • Loading artwork only…";
-  try{
-   foreach(var row in pending){
-    ct.ThrowIfCancellationRequested();string key=OnlineThumbnailLookup.CacheKey(row.Title);thumbnailAttempted.Add(key);
-    try{using(var result=await OnlineThumbnailLookup.Find(row.Title,ct)){
-     if(ct.IsCancellationRequested||IsDisposed||target!=current)return;foreach(var same in onlineResults.Where(x=>OnlineThumbnailLookup.CacheKey(x.Title)==key)){same.ThumbnailSource=result.Source;same.ThumbnailError=result.Error;}
-     if(result.TemporarilyBlocked){thumbnailsPaused=true;break;}
-     if(result.Image!=null&&!onlineThumbs.Images.ContainsKey(key)){onlineThumbs.Images.Add(key,result.Image);foreach(ListViewItem item in onlineFiles.Items){var tagged=item.Tag as OnlineResult;if(tagged!=null&&OnlineThumbnailLookup.CacheKey(tagged.Title)==key){item.ImageKey=key;item.ToolTipText=ThumbnailTip(tagged);}}onlineFiles.Invalidate();}
-    }}catch(OperationCanceledException){thumbnailAttempted.Remove(key);throw;}catch(Exception ex){row.ThumbnailError=ex.Message;}
-   }
-  }catch(OperationCanceledException){}finally{if(!ct.IsCancellationRequested&&!IsDisposed&&target==current){thumbnailsLoading=false;if(onlineMode)RenderOnline();}}
- }
- string ThumbnailTip(OnlineResult r){string query=OnlineThumbnailLookup.SearchText(r.Title);string header="Metadata only • media transfer starts only after Stream locally or Download locally";if(r.ThumbnailSource.Length>0)return header+"\nThumbnail search: "+query+"\nImage source: "+r.ThumbnailSource;if(r.ThumbnailError.Length>0)return header+"\nThumbnail search: "+query+"\n"+r.ThumbnailError;return header+"\nThumbnail search: "+query;}
  void RenderOnline(){
-  if(!onlineMode)return;string q=search.Text.Trim();string res=resolution.SelectedIndex<=0?"":resolution.SelectedItem.ToString();IEnumerable<OnlineResult> selected=onlineResults.Where(r=>r.Seeders>0&&(q.Length==0||r.Title.IndexOf(q,StringComparison.OrdinalIgnoreCase)>=0||r.Source.IndexOf(q,StringComparison.OrdinalIgnoreCase)>=0));if(res.Length>0)selected=selected.Where(r=>r.Resolution.Equals(res,StringComparison.OrdinalIgnoreCase));
-  if(sort.SelectedIndex==1)selected=selected.OrderBy(r=>r.Title,StringComparer.OrdinalIgnoreCase);else if(sort.SelectedIndex==2)selected=selected.OrderByDescending(r=>r.Size).ThenByDescending(r=>r.Seeders);else selected=selected.OrderByDescending(r=>r.Seeders).ThenByDescending(r=>r.Published);
-  var rows=selected.ToList();onlineFiles.BeginUpdate();onlineFiles.Items.Clear();foreach(var r in rows){string published=r.Published==DateTime.MinValue?"—":r.Published.ToLocalTime().ToString("dd MMM yyyy HH:mm");var item=new ListViewItem(new[]{r.Title,r.Resolution,SizeText(r.Size),r.Seeders.ToString(),r.Leechers.ToString(),r.Source,published});string key=OnlineThumbnailLookup.CacheKey(r.Title);item.ImageKey=onlineThumbs.Images.ContainsKey(key)?key:"__placeholder";item.ToolTipText=ThumbnailTip(r);item.Tag=r;onlineFiles.Items.Add(item);}onlineFiles.EndUpdate();
-  if(onlineSearching)status.Text="Retrieving torrent metadata for \""+onlineQueryFor+"\"… no media is being downloaded";else if(onlineError.Length>0)status.Text="Online search unavailable • "+onlineError;else status.Text=onlineFiles.Items.Count+" seeded online results"+(onlineFiles.Items.Count==0?" • No matching results with at least one seeder.":" • Select a result to Stream locally or Download locally");
-  if(thumbnailsLoading)status.Text+=" • Loading artwork only…";else if(thumbnailsPaused)status.Text+=" • Thumbnail lookup paused by the search engine";else StartThumbnailLoading(rows);
+  if(searchView.IsDisposed)return;string src=sourceFilter.SelectedIndex<=0?"":sourceFilter.SelectedItem.ToString();string cat=categoryFilter.SelectedIndex<=0?"":categoryFilter.SelectedItem.ToString();string res=resolution.SelectedIndex<=0?"":resolution.SelectedItem.ToString();IEnumerable<OnlineResult> selected=onlineResults.Where(r=>r.Seeders>0);
+  if(src.Length>0)selected=selected.Where(r=>DisplaySource(r.Source).Equals(src,StringComparison.OrdinalIgnoreCase));if(cat.Length>0)selected=selected.Where(r=>MetadataLabels.Category(r).Equals(cat,StringComparison.OrdinalIgnoreCase));if(res.Length>0)selected=selected.Where(r=>r.Resolution.Equals(res,StringComparison.OrdinalIgnoreCase));var rows=selected.OrderByDescending(r=>r.Seeders).ThenByDescending(r=>r.Published).ToList();
+  if(selectedOnline!=null&&!rows.Contains(selectedOnline))selectedOnline=rows.FirstOrDefault();if(selectedOnline==null&&rows.Count>0)selectedOnline=rows[0];
+  onlineCards.SuspendLayout();while(onlineCards.Controls.Count>0)onlineCards.Controls[0].Dispose();foreach(var r in rows){var card=new OnlineResultCard(r);card.Selected=r==selectedOnline;card.ResultSelected+=delegate{SelectOnline(card.Result,card);};card.ResultActivated+=delegate{SelectOnline(card.Result,card);StreamOnline();};tips.SetToolTip(card,"Metadata only\n"+r.Title+"\n"+r.Seeders+" seeders • "+r.Leechers+" leechers");onlineCards.Controls.Add(card);}onlineCards.ResumeLayout();ResizeOnlineCards();RenderInspector();
+  string q=onlineQueryFor.Length>0?onlineQueryFor:onlineQuery.Text.Trim();searchHeading.Text=q.Length==0?"Search":"Search results for “"+q+"”";
+  if(onlineSearching){searchCount.Text="Searching metadata sources…";SetStatus("Searching…","No media is being downloaded.");}
+  else if(onlineError.Length>0){searchCount.Text="Search unavailable";SetStatus("Search unavailable",onlineError);}
+  else{searchCount.Text="Found "+rows.Count+" result"+(rows.Count==1?"":"s")+" (metadata only)";SetStatus("Ready","Results are metadata only. No files are downloaded.");}
+  if(!onlineSearching&&!thumbnailsLoading&&!thumbnailsPaused&&rows.Count>0)StartThumbnailLoading(rows);
  }
- static string SizeText(long n){if(n<=0)return "—";return n>=1073741824?(n/1073741824.0).ToString("0.0")+" GB":(n/1048576.0).ToString("0.0")+" MB";}
- void Play(){if(files.SelectedItems.Count>0)Launch(((Video)files.SelectedItems[0].Tag).Path);else status.Text="Select a video first, then choose Play.";}
- void StreamOnline(){if(onlineFiles.SelectedItems.Count==0){status.Text="Select an online result first.";return;}var r=(OnlineResult)onlineFiles.SelectedItems[0].Tag;if(TransferBridge.Stream(this,r))status.Text="VideoShelf streaming player opened • torrent transfer starts in the player";}
- void DownloadOnline(){if(onlineFiles.SelectedItems.Count==0){status.Text="Select an online result first.";return;}var r=(OnlineResult)onlineFiles.SelectedItems[0].Tag;string suggested=current!=null?current.Path:root;if(TransferBridge.Download(this,r,suggested))status.Text="VideoShelf download window opened • transfer starts there";}
- void CopyOnline(){if(onlineFiles.SelectedItems.Count==0){status.Text="Select an online result first.";return;}try{Clipboard.SetText(((OnlineResult)onlineFiles.SelectedItems[0].Tag).Link);status.Text="Torrent/magnet link copied to the clipboard. No media was downloaded.";}catch(Exception ex){status.Text="Could not copy link: "+ex.Message;}}
- void Launch(string path){try{Process.Start(new ProcessStartInfo(path){UseShellExecute=true});}catch(Exception ex){MessageBox.Show(this,"Could not open this item. Check that it still exists and that a suitable application is installed.\n\n"+ex.Message,"VideoShelf",MessageBoxButtons.OK,MessageBoxIcon.Information);}}
+ void SelectOnline(OnlineResult result,OnlineResultCard card){selectedOnline=result;foreach(Control c in onlineCards.Controls){var rc=c as OnlineResultCard;if(rc!=null){rc.Selected=rc==card;rc.Invalidate();}}RenderInspector();}
+ void RenderInspector(){
+  if(inspectorImage.Image!=null){var old=inspectorImage.Image;inspectorImage.Image=null;old.Dispose();}while(inspectorTags.Controls.Count>0)inspectorTags.Controls[0].Dispose();
+  bool has=selectedOnline!=null;downloadOnline.Enabled=streamOnline.Enabled=copyLink.Enabled=viewFiles.Enabled=has;if(!has){inspectorTitle.Text="Select a result";inspectorMeta.Text="Choose a seeded result to see its metadata and available actions.";return;}
+  var r=selectedOnline;inspectorTitle.Text=r.Title;foreach(string tag in MetadataLabels.Tags(r.Title,r.Resolution))inspectorTags.Controls.Add(MakePill(tag));
+  string date=r.Published==DateTime.MinValue?"—":r.Published.ToLocalTime().ToString("yyyy-MM-dd");inspectorMeta.Text="Total size\t"+SizeText(r.Size)+"\r\n\r\nRelease date\t"+date+"\r\n\r\nSource\t\t"+DisplaySource(r.Source)+"\r\n\r\nSeeders\t\t"+r.Seeders.ToString("N0")+"\r\n\r\nLeechers\t"+r.Leechers.ToString("N0")+"\r\n\r\nTorrent metadata only. Use View files to inspect the torrent contents before starting a transfer.";
+  var card=onlineCards.Controls.OfType<OnlineResultCard>().FirstOrDefault(c=>c.Result==r);if(card!=null&&card.Preview!=null)inspectorImage.Image=new Bitmap(card.Preview);
+ }
+ Label MakePill(string text){using(var f=new Font("Segoe UI",8f)){int width=Math.Min(100,TextRenderer.MeasureText(text,f).Width+16);var l=new Label{Text=text,Width=width,Height=25,TextAlign=ContentAlignment.MiddleCenter,ForeColor=Color.FromArgb(224,234,244),BackColor=Color.FromArgb(18,39,57),Margin=new Padding(0,0,6,6),Font=new Font("Segoe UI",8f)};return l;}}
+ async void StartThumbnailLoading(IEnumerable<OnlineResult> displayed){
+  if(thumbnailsLoading||thumbnailsPaused||onlineSearching||section!=ShellSection.Search||IsDisposed)return;var pending=displayed.Where(r=>r.Seeders>0).GroupBy(r=>OnlineThumbnailLookup.CacheKey(r.Title),StringComparer.OrdinalIgnoreCase).Select(g=>g.First()).Where(r=>!thumbnailAttempted.Contains(OnlineThumbnailLookup.CacheKey(r.Title))).Take(40).ToArray();if(pending.Length==0)return;
+  thumbnailScan.Cancel();thumbnailScan.Dispose();thumbnailScan=new System.Threading.CancellationTokenSource();var ct=thumbnailScan.Token;Person target=current;thumbnailsLoading=true;SetStatus("Loading artwork…","Only small preview images are fetched; no video data.");
+  try{foreach(var row in pending){ct.ThrowIfCancellationRequested();string key=OnlineThumbnailLookup.CacheKey(row.Title);thumbnailAttempted.Add(key);try{using(var result=await OnlineThumbnailLookup.Find(row.Title,ct)){if(ct.IsCancellationRequested||IsDisposed||target!=current)return;foreach(var same in onlineResults.Where(x=>OnlineThumbnailLookup.CacheKey(x.Title)==key)){same.ThumbnailSource=result.Source;same.ThumbnailError=result.Error;}if(result.TemporarilyBlocked){thumbnailsPaused=true;break;}if(result.Image!=null){foreach(var card in onlineCards.Controls.OfType<OnlineResultCard>().Where(c=>OnlineThumbnailLookup.CacheKey(c.Result.Title)==key))card.SetPreview(result.Image);if(selectedOnline!=null&&OnlineThumbnailLookup.CacheKey(selectedOnline.Title)==key)RenderInspector();}}}catch(OperationCanceledException){thumbnailAttempted.Remove(key);throw;}catch(Exception ex){row.ThumbnailError=ex.Message;}}}
+  catch(OperationCanceledException){}finally{if(!ct.IsCancellationRequested&&!IsDisposed&&target==current){thumbnailsLoading=false;if(section==ShellSection.Search)SetStatus("Ready",thumbnailsPaused?"Thumbnail lookup paused by the image source.":"Results are metadata only. No files are downloaded.");}}
+ }
+ static string DisplaySource(string s){if(string.IsNullOrWhiteSpace(s))return "Indexer";Uri u;if(Uri.TryCreate(s,UriKind.Absolute,out u))return u.Host;return s;}
+ void StreamOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a seeded result first.");return;}if(TransferBridge.Stream(this,selectedOnline)){RefreshActivityBadges();SetStatus("Streaming opened","Torrent data starts only after this explicit action.");}}
+ void DownloadOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a seeded result first.");return;}string suggested=current!=null?current.Path:root;if(TransferBridge.Download(this,selectedOnline,suggested)){RefreshActivityBadges();SetStatus("Download opened","Choose the destination in the transfer window.");}}
+ void CopyOnline(){if(selectedOnline==null){SetStatus("Select a result","Choose a result first.");return;}try{Clipboard.SetText(selectedOnline.Link);SetStatus("Copied link","No media was downloaded.");}catch(Exception ex){SetStatus("Copy failed",ex.Message);}}
+ void ViewOnlineFiles(){if(selectedOnline==null){SetStatus("Select a result","Choose a result first.");return;}if(TransferBridge.ViewFiles(this,selectedOnline))SetStatus("Torrent files","Retrieving torrent metadata only.");}
 }
 }
