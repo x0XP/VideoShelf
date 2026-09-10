@@ -1,0 +1,9 @@
+VideoShelf.exe
+*.pdb
+*.user
+*.suo
+.vs/
+bin/
+obj/
+Thumbs.db
+Desktop.ini
