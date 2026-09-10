@@ -13,7 +13,7 @@ static class ScreenshotHarness {
   string root=Path.Combine(Path.GetTempPath(),"VideoShelf-home-layout-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,"re:zero");Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);shelf.ShowHome();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
  public static void CaptureReZero(string outputPath){
-  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,"re:zero");Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(55))){if(!shelf.PullScreenshotPortrait("re:zero",timeout.Token))throw new Exception("A real thumbnail could not be pulled for re:zero; refusing to capture a placeholder artwork proof.");}shelf.ShowHome();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
+  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,"re:zero");Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(55))){if(!shelf.PullScreenshotPortrait("re:zero",timeout.Token))throw new Exception("A real thumbnail could not be pulled for re:zero; refusing to capture a placeholder artwork proof.");}shelf.ShowCollectionsBrowser();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
  public static void CaptureReZeroDetail(string outputPath){
   string root=Path.Combine(Path.GetTempPath(),"VideoShelf-detail-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,"re:zero");Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.OpenScreenshotCollection("re:zero"))throw new Exception("VideoShelf did not open the real re:zero collection view correctly.");Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
@@ -21,15 +21,17 @@ static class ScreenshotHarness {
  public static void CaptureOnlineResults(string displayName,string query,string sourceUrl,string outputPath,int expectedResults){
   string root=Path.Combine(Path.GetTempPath(),"VideoShelf-online-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,displayName);Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.PrepareOnlineScreenshot(displayName,query,sourceUrl,expectedResults))throw new Exception("VideoShelf did not receive enough seeded online results from the metadata source.");Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
- public static void CaptureMockupSearch(string outputPath){Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareMockupSearch();Settle(shelf);SaveWindow(shelf,outputPath);}Verify(outputPath,12000);}
+ public static void CaptureMockupSearch(string outputPath){Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareMockupSearch();Settle(shelf);SaveWindow(shelf,outputPath,1366,860);}Verify(outputPath,12000);}
  static void Init(){Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
  static void PrepareWindow(Shelf shelf){
   var host=new Panel{Size=new Size(1100,820),BackColor=Color.Black};host.CreateControl();
   shelf.MinimumSize=Size.Empty;shelf.MaximumSize=Size.Empty;shelf.TopLevel=false;shelf.StartPosition=FormStartPosition.Manual;shelf.Location=Point.Empty;shelf.Size=new Size(1044,788);host.Controls.Add(shelf);shelf.Show();shelf.PerformLayout();Application.DoEvents();
  }
  static void Settle(Shelf shelf){shelf.PerformLayout();foreach(Control c in shelf.Controls)c.PerformLayout();shelf.Refresh();Application.DoEvents();Thread.Sleep(350);Application.DoEvents();}
- static void SaveWindow(Shelf shelf,string outputPath){
-  const int width=1536,height=1024,titleHeight=34,bodyHeight=960,statusHeight=30,sidebarWidth=244,mainWidth=1290;
+ static void SaveWindow(Shelf shelf,string outputPath){SaveWindow(shelf,outputPath,1536,1024);}
+ static void SaveWindow(Shelf shelf,string outputPath,int width,int height){
+  const int titleHeight=34,statusHeight=30,sidebarWidth=244;
+  int bodyHeight=Math.Max(320,height-titleHeight-statusHeight),mainWidth=Math.Max(500,width-sidebarWidth-2);
   Control title=shelf.Controls.Cast<Control>().FirstOrDefault(c=>c is Panel&&c.Dock==DockStyle.Top&&c.Height>=30&&c.Height<=36);
   Control status=shelf.Controls.Cast<Control>().FirstOrDefault(c=>c is Panel&&c.Dock==DockStyle.Bottom);
   Control view=shelf.ActiveViewForCapture();
@@ -59,7 +61,7 @@ static class ScreenshotHarness {
 
 sealed partial class Shelf {
  internal void PrepareScreenshotLibrary(string path){
-  generation++;portraitScan.Cancel();onlineScan.Cancel();thumbnailScan.Cancel();current=null;root=path;fetchingPortraits=false;onlineSearching=false;thumbnailsLoading=false;thumbnailsPaused=false;skipped=0;selectedOnline=null;homePath.Text=root;settingsPath.Text=root;addFolder.Enabled=true;ClearCards();foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();people=new List<Person>();foreach(string dir in Directory.GetDirectories(path).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))people.Add(new Person{Path=dir,Name=FolderNaming.DisplayName(dir)});RenderHome();
+  generation++;portraitScan.Cancel();onlineScan.Cancel();thumbnailScan.Cancel();current=null;root=path;fetchingPortraits=false;onlineSearching=false;thumbnailsLoading=false;thumbnailsPaused=false;skipped=0;selectedOnline=null;homePath.Text=root;settingsPath.Text=root;addFolder.Enabled=true;ClearCards();foreach(var p in people)if(p.Photo!=null)p.Photo.Dispose();people=new List<Person>();foreach(string dir in Directory.GetDirectories(path).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))people.Add(new Person{Path=dir,Name=FolderNaming.DisplayName(dir)});RenderHome();RefreshDashboardHome();
  }
  internal bool PullScreenshotPortrait(string name,CancellationToken ct){Person person=people.FirstOrDefault(p=>p.Name.Equals(name,StringComparison.OrdinalIgnoreCase));if(person==null)return false;PortraitLookup.Forget(name);using(var result=PortraitLookup.Find(name,ct).GetAwaiter().GetResult()){if(result.Photo==null)return false;ApplyPortrait(person,result);}RenderHome();Application.DoEvents();return person.Photo!=null;}
  internal bool OpenScreenshotCollection(string displayName){Person person=people.FirstOrDefault(p=>p.Name.Equals(displayName,StringComparison.OrdinalIgnoreCase));if(person==null)return false;OpenPerson(person);DateTime deadline=DateTime.UtcNow.AddSeconds(5);while(DateTime.UtcNow<deadline){Application.DoEvents();if(current==person&&section==ShellSection.Collections&&collectionView.Visible&&statusLeft.Text.IndexOf("local video",StringComparison.OrdinalIgnoreCase)>=0)return true;Thread.Sleep(50);}return current==person&&collectionView.Visible;}
