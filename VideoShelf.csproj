@@ -36,6 +36,7 @@
     <Compile Include="ScreenshotHarness.cs" />
     <Compile Include="Shelf.Core.cs" />
     <Compile Include="Shelf.Layout.cs" />
+    <Compile Include="Shelf.Visuals.cs" />
     <Compile Include="Shelf.Library.cs" />
     <Compile Include="Shelf.Online.cs" />
     <Compile Include="PortraitLookup.cs" />
