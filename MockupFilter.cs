@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace VideoShelf {
@@ -60,6 +61,14 @@ sealed class InspectorMetadataView : Control {
   foreach(string input in lines){string line=input.Trim();if(line.Length==0)continue;if(rows<5&&line.IndexOf('\t')>=0){string[] pieces=line.Split(new[]{'\t'},StringSplitOptions.RemoveEmptyEntries);if(pieces.Length>=2){string label=pieces[0].Trim(),value=pieces[pieces.Length-1].Trim();using(var f=new Font("Segoe UI",9.2f))TextRenderer.DrawText(g,label,f,new Rectangle(0,y,118,20),Color.FromArgb(173,194,213),TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);Color valueColor=label.StartsWith("Seeder",StringComparison.OrdinalIgnoreCase)?XdolfTheme.Success:label.StartsWith("Leecher",StringComparison.OrdinalIgnoreCase)?XdolfTheme.AccentRed:Color.White;using(var f=new Font("Segoe UI",9.2f,label.StartsWith("Seeder",StringComparison.OrdinalIgnoreCase)||label.StartsWith("Leecher",StringComparison.OrdinalIgnoreCase)?FontStyle.Bold:FontStyle.Regular))TextRenderer.DrawText(g,value,f,new Rectangle(150,y,Math.Max(0,Width-150),20),valueColor,TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding);y+=31;rows++;continue;}}
    if(rows>=5||line.IndexOf('\t')<0){y+=7;using(var f=new Font("Segoe UI",9.1f))TextRenderer.DrawText(g,line,f,new Rectangle(0,y,Width,Math.Max(0,Height-y)),Color.FromArgb(192,207,221),TextFormatFlags.WordBreak|TextFormatFlags.NoPadding);break;}
   }
+ }
+}
+
+static class NativeDarkScroll {
+ [DllImport("uxtheme.dll",CharSet=CharSet.Unicode)] static extern int SetWindowTheme(IntPtr hwnd,string pszSubAppName,string pszSubIdList);
+ public static void Apply(Control control){
+  if(control==null||control.IsDisposed)return;
+  try{if(!control.IsHandleCreated)control.CreateControl();SetWindowTheme(control.Handle,"DarkMode_Explorer",null);control.Invalidate(true);}catch{}
  }
 }
 
