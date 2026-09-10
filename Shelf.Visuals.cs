@@ -28,10 +28,14 @@ sealed partial class Shelf {
   queryFrame=new Panel{BackColor=Color.FromArgb(10,20,29),TabStop=false};queryFrame.Paint+=delegate(object s,PaintEventArgs e){using(var p=new Pen(Color.FromArgb(53,74,91)))e.Graphics.DrawRectangle(p,0,0,queryFrame.Width-1,queryFrame.Height-1);};queryFrame.Click+=delegate{onlineQuery.Focus();};
   parent.Controls.Add(queryFrame);onlineQuery.Parent=queryFrame;onlineQuery.BorderStyle=BorderStyle.None;onlineQuery.BackColor=queryFrame.BackColor;onlineQuery.ForeColor=XdolfTheme.Text;onlineQuery.Font=new Font("Segoe UI",10.5f);onlineQuery.Multiline=false;
   queryGlyph=new Label{Text="\uE721",BackColor=queryFrame.BackColor,ForeColor=Color.FromArgb(211,225,238),TextAlign=ContentAlignment.MiddleCenter,Font=UiPaint.IconFont(16),Cursor=Cursors.IBeam};queryGlyph.Click+=delegate{onlineQuery.Focus();};queryFrame.Controls.Add(queryGlyph);queryGlyph.BringToFront();
-  LayoutExtendedVisuals();queryFrame.BringToFront();
+  queryFrame.SetBounds(17,14,465,38);LayoutExtendedVisuals();queryFrame.BringToFront();
  }
  void LayoutExtendedVisuals(){
-  if(queryFrame!=null){queryFrame.SetBounds(17,14,465,38);onlineQuery.SetBounds(12,9,405,22);if(queryGlyph!=null)queryGlyph.SetBounds(425,5,32,28);}
+  if(queryFrame!=null){
+   int w=Math.Max(120,queryFrame.Width);
+   onlineQuery.SetBounds(12,9,Math.Max(70,w-60),22);
+   if(queryGlyph!=null)queryGlyph.SetBounds(w-40,5,32,28);
+  }
   FitLastFileColumn();
  }
  void ConfigureFileList(){
