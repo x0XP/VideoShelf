@@ -8,7 +8,7 @@ if not exist "%CSC%" (
  exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0BuildBrandAssets.ps1" -OutputDir "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0BuildBrandAssets.ps1"
 if errorlevel 1 (
  echo VideoShelf brand asset generation failed.
  exit /b 1

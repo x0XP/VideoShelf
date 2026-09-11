@@ -10,7 +10,7 @@
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <ApplicationIcon>VideoShelfApp.ico</ApplicationIcon>
-    <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)BuildBrandAssets.ps1&quot; -OutputDir &quot;$(ProjectDir)&quot;</PreBuildEvent>
+    <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)BuildBrandAssets.ps1&quot;</PreBuildEvent>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <Optimize>true</Optimize>
