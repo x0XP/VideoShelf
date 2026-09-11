@@ -8,13 +8,8 @@ if not exist "%CSC%" (
  exit /b 1
 )
 
-if not exist "VideoShelf.ico.b64" (
- echo VideoShelf icon source is missing.
- exit /b 1
-)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$b=[Convert]::FromBase64String((Get-Content -Raw 'VideoShelf.ico.b64')); [IO.File]::WriteAllBytes((Join-Path (Get-Location) 'VideoShelf.ico'),$b)"
-if errorlevel 1 (
- echo VideoShelf icon generation failed.
+if not exist "VideoShelf.ico" (
+ echo VideoShelf icon asset is missing.
  exit /b 1
 )
 
@@ -24,7 +19,7 @@ if errorlevel 1 (
  exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Drawing; $exe=(Resolve-Path 'VideoShelf.exe').Path; $icon=[System.Drawing.Icon]::ExtractAssociatedIcon($exe); if($null -eq $icon){throw 'Could not extract VideoShelf application icon.'}; $src=$icon.ToBitmap(); $bmp=[System.Drawing.Bitmap]::new(96,96); $g=[System.Drawing.Graphics]::FromImage($bmp); $g.Clear([System.Drawing.Color]::FromArgb(7,9,12)); $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic; $g.PixelOffsetMode=[System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality; $g.DrawImage($src,0,0,96,96); $bmp.Save((Join-Path (Get-Location) 'VideoShelfInstallerLogo.bmp'),[System.Drawing.Imaging.ImageFormat]::Bmp); $g.Dispose(); $bmp.Dispose(); $src.Dispose(); $icon.Dispose()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Drawing; $icon=[System.Drawing.Icon]::new((Resolve-Path 'VideoShelf.ico').Path,256,256); $src=$icon.ToBitmap(); $bmp=[System.Drawing.Bitmap]::new(256,256); $g=[System.Drawing.Graphics]::FromImage($bmp); $g.Clear([System.Drawing.Color]::FromArgb(13,25,36)); $g.CompositingQuality=[System.Drawing.Drawing2D.CompositingQuality]::HighQuality; $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic; $g.PixelOffsetMode=[System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality; $g.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::HighQuality; $g.DrawImage($src,0,0,256,256); $bmp.Save((Join-Path (Get-Location) 'VideoShelfInstallerLogo.bmp'),[System.Drawing.Imaging.ImageFormat]::Bmp); $g.Dispose(); $bmp.Dispose(); $src.Dispose(); $icon.Dispose()"
 if errorlevel 1 (
  echo VideoShelf installer branding generation failed.
  exit /b 1

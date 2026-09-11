@@ -10,7 +10,6 @@
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <ApplicationIcon>VideoShelf.ico</ApplicationIcon>
-    <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$b=[Convert]::FromBase64String((Get-Content -Raw '$(ProjectDir)VideoShelf.ico.b64')); [IO.File]::WriteAllBytes('$(ProjectDir)VideoShelf.ico',$b)&quot;</PreBuildEvent>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <Optimize>true</Optimize>
@@ -53,7 +52,7 @@
     <Compile Include="OnlineThumbnailLookup.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="VideoShelf.ico.b64" />
+    <None Include="VideoShelf.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
