@@ -1,6 +1,6 @@
+using System.Collections;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using MonoTorrent.Client;
 
 namespace VideoShelf.TransferHost;
 
@@ -200,24 +200,40 @@ internal sealed class TorrentVideoSelectionController : IDisposable
     {
         if (applied || disposed || form.IsDisposed) return;
         if (!fileChoice.Enabled || fileChoice.Items.Count == 0) return;
-        if (playableField.GetValue(form) is not List<ITorrentManagerFile> playable || playable.Count == 0 || playable.Count != fileChoice.Items.Count) return;
+        if (playableField.GetValue(form) is not IList playable || playable.Count == 0 || playable.Count != fileChoice.Items.Count) return;
 
-        List<ITorrentManagerFile> ordered = playable.OrderBy(f => f.Path, TorrentVideoSelection.NaturalPathComparer).ToList();
-        int target = TorrentVideoSelection.ChooseDefaultIndex(releaseTitle, ordered.Select(f => f.Path).ToArray());
+        object[] ordered = playable.Cast<object>()
+            .OrderBy(GetPath, TorrentVideoSelection.NaturalPathComparer)
+            .ToArray();
+        string[] orderedPaths = ordered.Select(GetPath).ToArray();
+        int target = TorrentVideoSelection.ChooseDefaultIndex(releaseTitle, orderedPaths);
         if (target < 0) target = 0;
 
         // Rebuild both the actual playable list and the selector together so indexes remain identical.
-        // If the legacy size-based selection already began buffering, selecting the corrected index
-        // increments the player's playback revision and cancels that superseded request.
+        // Clear() first resets SelectedIndex to -1. Selecting the corrected item afterwards therefore
+        // fires the real player's change handler even when the corrected item occupies index zero.
         fileChoice.Items.Clear();
         playable.Clear();
-        playable.AddRange(ordered);
-        foreach (ITorrentManagerFile file in playable)
-            fileChoice.Items.Add($"{file.Path}  ({FormatSize(file.Length)})");
+        foreach (object file in ordered) playable.Add(file);
+        foreach (object file in ordered)
+            fileChoice.Items.Add($"{GetPath(file)}  ({FormatSize(GetLength(file))})");
         fileChoice.SelectedIndex = target;
 
         applied = true;
         timer.Stop();
+    }
+
+    static string GetPath(object file)
+    {
+        PropertyInfo? property = file.GetType().GetProperty("Path", BindingFlags.Instance | BindingFlags.Public);
+        return property?.GetValue(file) as string ?? string.Empty;
+    }
+
+    static long GetLength(object file)
+    {
+        PropertyInfo? property = file.GetType().GetProperty("Length", BindingFlags.Instance | BindingFlags.Public);
+        object? value = property?.GetValue(file);
+        return value == null ? 0 : Convert.ToInt64(value);
     }
 
     static T? FindControl<T>(Control root) where T : Control
