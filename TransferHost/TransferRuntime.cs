@@ -8,6 +8,7 @@ internal static class TransferRuntime
     public static void SelfTest()
     {
         TorrentSession.SelfTest();
+        StreamingTorrentSession.SelfTest();
         TransferSourceResolver.SelfTest();
         MethodInfo? metadataStart = typeof(TorrentManager)
             .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
