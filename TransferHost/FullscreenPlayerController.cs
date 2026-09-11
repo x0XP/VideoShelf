@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace VideoShelf.TransferHost;
 
 internal sealed class FullscreenPlayerController : IDisposable
@@ -33,6 +35,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         sourceStop = bottomBar.Controls.OfType<Button>()
             .FirstOrDefault(b => b.Text.Equals("Stop", StringComparison.OrdinalIgnoreCase));
 
+        sourcePlayPause.Visible = false;
         sourcePlayPause.TabStop = false;
         if (sourceStop != null)
         {
@@ -72,7 +75,9 @@ internal sealed class FullscreenPlayerController : IDisposable
     void OnPlayPauseClick(object? sender, EventArgs e)
     {
         if (!sourcePlayPause.Enabled) return;
-        sourcePlayPause.PerformClick();
+        MethodInfo? onClick = sourcePlayPause.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (onClick == null) throw new InvalidOperationException("Streaming player play/pause action could not be invoked.");
+        onClick.Invoke(sourcePlayPause, new object[] { EventArgs.Empty });
         UpdatePlayPauseIcon();
     }
 
@@ -181,7 +186,6 @@ internal sealed class FullscreenPlayerController : IDisposable
         int seekX = 76;
         int seekWidth = Math.Max(130, timeX - seekX - 12);
 
-        sourcePlayPause.SetBounds(22, 16, iconWidth, 34);
         playPause.SetBounds(22, 16, iconWidth, 34);
         seek.SetBounds(seekX, 18, seekWidth, 30);
         timeLabel.SetBounds(timeX, 22, timeWidth, 22);
