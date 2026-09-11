@@ -161,7 +161,7 @@ var
 begin
   Card := TPanel.Create(WizardForm);
   Card.Parent := Parent;
-  Card.SetBounds(ScaleX(20), ScaleY(30), ScaleX(138), ScaleY(145));
+  Card.SetBounds(ScaleX(20), ScaleY(44), ScaleX(138), ScaleY(145));
   Card.BevelOuter := bvNone;
   Card.Color := VSRaised;
 
@@ -220,24 +220,35 @@ begin
 end;
 
 procedure ApplyWelcomeLayout();
+var
+  SideWidth: Integer;
+  ContentLeft: Integer;
+  ContentWidth: Integer;
 begin
   SuppressDefaultArtwork();
   WizardForm.WelcomePage.Color := VSBackground;
+
+  SideWidth := ScaleX(190);
+  WelcomeSidePanel.SetBounds(0, 0, SideWidth, WizardForm.WelcomePage.Height);
+  WelcomeCard.Left := (WelcomeSidePanel.Width - WelcomeCard.Width) div 2;
+  WelcomeCard.Top := ScaleY(44);
+
+  ContentLeft := SideWidth + ScaleX(34);
+  ContentWidth := WizardForm.WelcomePage.Width - ContentLeft - ScaleX(36);
 
   WizardForm.WelcomeLabel1.AutoSize := False;
   WizardForm.WelcomeLabel1.Font.Name := 'Segoe UI Semibold';
   WizardForm.WelcomeLabel1.Font.Size := 20;
   WizardForm.WelcomeLabel1.Font.Color := VSStrong;
-  WizardForm.WelcomeLabel1.SetBounds(ScaleX(194), ScaleY(50), WizardForm.WelcomePage.Width - ScaleX(222), ScaleY(42));
+  WizardForm.WelcomeLabel1.SetBounds(ContentLeft, ScaleY(52), ContentWidth, ScaleY(42));
   WizardForm.WelcomeLabel1.Caption := 'Install VideoShelf';
 
   WizardForm.WelcomeLabel2.AutoSize := False;
   WizardForm.WelcomeLabel2.Font.Name := 'Segoe UI';
   WizardForm.WelcomeLabel2.Font.Size := 10;
   WizardForm.WelcomeLabel2.Font.Color := VSMuted;
-  WizardForm.WelcomeLabel2.SetBounds(ScaleX(194), ScaleY(104), WizardForm.WelcomePage.Width - ScaleX(222), ScaleY(170));
+  WizardForm.WelcomeLabel2.SetBounds(ContentLeft, ScaleY(112), ContentWidth, ScaleY(160));
 
-  WelcomeSidePanel.SetBounds(0, 0, ScaleX(178), WizardForm.WelcomePage.Height);
   WelcomeSidePanel.BringToFront;
   WelcomeCard.BringToFront;
   WizardForm.WelcomeLabel1.BringToFront;
@@ -245,33 +256,79 @@ begin
 end;
 
 procedure ApplyFinishLayout();
+var
+  SideWidth: Integer;
+  ContentLeft: Integer;
+  ContentWidth: Integer;
 begin
   SuppressDefaultArtwork();
   WizardForm.FinishedPage.Color := VSBackground;
+
+  SideWidth := ScaleX(190);
+  FinishSidePanel.SetBounds(0, 0, SideWidth, WizardForm.FinishedPage.Height);
+  FinishCard.Left := (FinishSidePanel.Width - FinishCard.Width) div 2;
+  FinishCard.Top := ScaleY(44);
+
+  ContentLeft := SideWidth + ScaleX(34);
+  ContentWidth := WizardForm.FinishedPage.Width - ContentLeft - ScaleX(36);
 
   WizardForm.FinishedHeadingLabel.AutoSize := False;
   WizardForm.FinishedHeadingLabel.Font.Name := 'Segoe UI Semibold';
   WizardForm.FinishedHeadingLabel.Font.Size := 18;
   WizardForm.FinishedHeadingLabel.Font.Color := VSStrong;
-  WizardForm.FinishedHeadingLabel.SetBounds(ScaleX(194), ScaleY(50), WizardForm.FinishedPage.Width - ScaleX(222), ScaleY(42));
+  WizardForm.FinishedHeadingLabel.SetBounds(ContentLeft, ScaleY(52), ContentWidth, ScaleY(42));
   WizardForm.FinishedHeadingLabel.Caption := 'VideoShelf installed';
 
   WizardForm.FinishedLabel.AutoSize := False;
   WizardForm.FinishedLabel.Font.Name := 'Segoe UI';
   WizardForm.FinishedLabel.Font.Size := 10;
   WizardForm.FinishedLabel.Font.Color := VSMuted;
-  WizardForm.FinishedLabel.SetBounds(ScaleX(194), ScaleY(104), WizardForm.FinishedPage.Width - ScaleX(222), ScaleY(100));
+  WizardForm.FinishedLabel.SetBounds(ContentLeft, ScaleY(112), ContentWidth, ScaleY(86));
   WizardForm.FinishedLabel.Caption := 'Setup has finished installing VideoShelf on your computer.' + #13#10 + #13#10 + 'Click Finish to exit Setup.';
 
-  WizardForm.RunList.SetBounds(ScaleX(194), ScaleY(215), WizardForm.FinishedPage.Width - ScaleX(222), ScaleY(62));
+  WizardForm.RunList.SetBounds(ContentLeft, ScaleY(218), ContentWidth, ScaleY(54));
   ThemeChecklist(WizardForm.RunList);
 
-  FinishSidePanel.SetBounds(0, 0, ScaleX(178), WizardForm.FinishedPage.Height);
   FinishSidePanel.BringToFront;
   FinishCard.BringToFront;
   WizardForm.FinishedHeadingLabel.BringToFront;
   WizardForm.FinishedLabel.BringToFront;
   WizardForm.RunList.BringToFront;
+end;
+
+procedure ApplyStandardPageLayout();
+var
+  LeftMargin: Integer;
+  RightMargin: Integer;
+  TasksWidth: Integer;
+  ReadyWidth: Integer;
+  InstallWidth: Integer;
+  TrackHeight: Integer;
+  TrackTop: Integer;
+begin
+  LeftMargin := ScaleX(48);
+  RightMargin := ScaleX(36);
+
+  TasksWidth := WizardForm.SelectTasksPage.Width - LeftMargin - RightMargin;
+  WizardForm.SelectTasksLabel.Left := LeftMargin;
+  WizardForm.SelectTasksLabel.Width := TasksWidth;
+  WizardForm.TasksList.SetBounds(LeftMargin, WizardForm.TasksList.Top, TasksWidth, ScaleY(138));
+
+  ReadyWidth := WizardForm.ReadyPage.Width - LeftMargin - RightMargin;
+  WizardForm.ReadyLabel.Left := LeftMargin;
+  WizardForm.ReadyLabel.Width := ReadyWidth;
+  ReadySummary.SetBounds(LeftMargin, WizardForm.ReadyMemo.Top, ReadyWidth, ScaleY(150));
+
+  InstallWidth := WizardForm.InstallingPage.Width - LeftMargin - RightMargin;
+  WizardForm.StatusLabel.Left := LeftMargin;
+  WizardForm.StatusLabel.Width := InstallWidth;
+  WizardForm.FilenameLabel.Left := LeftMargin;
+  WizardForm.FilenameLabel.Width := InstallWidth;
+
+  TrackHeight := ScaleY(12);
+  TrackTop := WizardForm.ProgressGauge.Top + ((WizardForm.ProgressGauge.Height - TrackHeight) div 2);
+  ProgressTrack.SetBounds(LeftMargin, TrackTop, InstallWidth, TrackHeight);
+  ProgressFill.Height := TrackHeight;
 end;
 
 procedure StyleWizardPages();
@@ -347,7 +404,7 @@ begin
 
   WelcomeSidePanel := TPanel.Create(WizardForm);
   WelcomeSidePanel.Parent := WizardForm.WelcomePage;
-  WelcomeSidePanel.SetBounds(0, 0, ScaleX(178), WizardForm.WelcomePage.Height);
+  WelcomeSidePanel.SetBounds(0, 0, ScaleX(190), WizardForm.WelcomePage.Height);
   WelcomeSidePanel.Anchors := [akLeft, akTop, akBottom];
   WelcomeSidePanel.BevelOuter := bvNone;
   WelcomeSidePanel.Color := VSSidebar;
@@ -355,7 +412,7 @@ begin
 
   FinishSidePanel := TPanel.Create(WizardForm);
   FinishSidePanel.Parent := WizardForm.FinishedPage;
-  FinishSidePanel.SetBounds(0, 0, ScaleX(178), WizardForm.FinishedPage.Height);
+  FinishSidePanel.SetBounds(0, 0, ScaleX(190), WizardForm.FinishedPage.Height);
   FinishSidePanel.Anchors := [akLeft, akTop, akBottom];
   FinishSidePanel.BevelOuter := bvNone;
   FinishSidePanel.Color := VSSidebar;
@@ -363,7 +420,6 @@ begin
 
   ReadySummary := TNewMemo.Create(WizardForm);
   ReadySummary.Parent := WizardForm.ReadyPage;
-  ReadySummary.SetBounds(WizardForm.ReadyMemo.Left, WizardForm.ReadyMemo.Top, WizardForm.ReadyMemo.Width, WizardForm.ReadyMemo.Height);
   ReadySummary.ReadOnly := True;
   ReadySummary.TabStop := False;
   ReadySummary.Visible := False;
@@ -371,14 +427,13 @@ begin
 
   ProgressTrack := TPanel.Create(WizardForm);
   ProgressTrack.Parent := WizardForm.InstallingPage;
-  ProgressTrack.SetBounds(WizardForm.ProgressGauge.Left, WizardForm.ProgressGauge.Top, WizardForm.ProgressGauge.Width, ScaleY(16));
   ProgressTrack.BevelOuter := bvNone;
   ProgressTrack.Color := VSOutline;
   ProgressTrack.Visible := False;
 
   ProgressFill := TPanel.Create(WizardForm);
   ProgressFill.Parent := ProgressTrack;
-  ProgressFill.SetBounds(0, 0, 0, ProgressTrack.Height);
+  ProgressFill.SetBounds(0, 0, 0, ScaleY(12));
   ProgressFill.BevelOuter := bvNone;
   ProgressFill.Color := VSBlue;
 end;
@@ -388,6 +443,7 @@ begin
   ExtractTemporaryFile('VideoShelfInstallerLogo.bmp');
   StyleWizardPages();
   AddChrome();
+  ApplyStandardPageLayout();
   ApplyWelcomeLayout();
   ApplyFinishLayout();
   WizardForm.Caption := 'VideoShelf Setup';
@@ -402,6 +458,7 @@ begin
   ThemeButton(WizardForm.CancelButton);
   WizardForm.DiskSpaceLabel.Font.Color := VSMuted;
   SuppressDefaultArtwork();
+  ApplyStandardPageLayout();
 
   ReadySummary.Visible := False;
   ProgressTrack.Visible := False;
@@ -409,7 +466,6 @@ begin
   if CurPageID = wpReady then
   begin
     WizardForm.ReadyMemo.Visible := False;
-    ReadySummary.SetBounds(WizardForm.ReadyMemo.Left, WizardForm.ReadyMemo.Top, WizardForm.ReadyMemo.Width, WizardForm.ReadyMemo.Height);
     ReadySummary.Text := WizardForm.ReadyMemo.Text;
     ReadySummary.Visible := True;
     ReadySummary.BringToFront;
@@ -420,7 +476,6 @@ begin
   if CurPageID = wpInstalling then
   begin
     WizardForm.ProgressGauge.Visible := False;
-    ProgressTrack.SetBounds(WizardForm.ProgressGauge.Left, WizardForm.ProgressGauge.Top, WizardForm.ProgressGauge.Width, ScaleY(16));
     ProgressFill.SetBounds(0, 0, 0, ProgressTrack.Height);
     ProgressTrack.Visible := True;
     ProgressTrack.BringToFront;
