@@ -29,7 +29,9 @@ internal static class EntryPoint
                 if (command == "stream")
                 {
                     ApplicationConfiguration.Initialize();
-                    Application.Run(new OptimizedStreamForm(resolved, title));
+                    using var form = new OptimizedStreamForm(resolved, title);
+                    using var fullScreen = FullscreenPlayerController.Attach(form);
+                    Application.Run(form);
                     return;
                 }
 
