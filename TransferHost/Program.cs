@@ -136,8 +136,9 @@ internal sealed class TorrentSession : IAsyncDisposable
             AutoSaveLoadDhtCache = true,
             AutoSaveLoadFastResume = true,
             AutoSaveLoadMagnetLinkMetadata = true,
-            HttpStreamingPrefix = httpPrefix
+            CacheDirectory = cacheRoot
         };
+        if (streaming && httpPrefix != null) builder.HttpStreamingPrefix = httpPrefix;
         Engine = new ClientEngine(builder.ToSettings());
     }
 
@@ -218,7 +219,12 @@ internal sealed class TorrentSession : IAsyncDisposable
         Directory.CreateDirectory(root);
         try
         {
-            using var engine = new ClientEngine(new EngineSettingsBuilder { HttpStreamingPrefix = $"http://127.0.0.1:{FindFreePort()}/" }.ToSettings());
+            var normalSession = new TorrentSession(Path.Combine(root, "normal"), false);
+            normalSession.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            var streamingSession = new TorrentSession(Path.Combine(root, "streaming"), true);
+            if (!streamingSession.StreamingUrl("probe").StartsWith("http://127.0.0.1:", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("VideoShelf streaming endpoint was not configured correctly.");
+            streamingSession.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Core.Initialize();
             using var vlc = new LibVLC("--no-video-title-show", "--network-caching=1800");
             using var player = new MediaPlayer(vlc);
