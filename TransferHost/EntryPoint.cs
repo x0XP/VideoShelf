@@ -8,22 +8,33 @@ internal static class EntryPoint
     static void Main(string[] args)
     {
         string command = args.FirstOrDefault()?.ToLowerInvariant() ?? "";
-        if (command == "files")
+        if (command == "files" || command == "download" || command == "stream")
         {
-            ApplicationConfiguration.Initialize();
             try
             {
                 var values = Arguments.Parse(args.Skip(1).ToArray());
                 string source = values.Required("source");
-                string title = values.Get("title") ?? "Torrent";
-                Application.Run(new FileListForm(source, title));
+                string? page = values.Get("page");
+                string resolved = TransferSourceResolver.ResolveAsync(source, page, CancellationToken.None).GetAwaiter().GetResult();
+                if (string.IsNullOrWhiteSpace(resolved)) throw new InvalidOperationException("This result does not contain usable torrent metadata.");
+
+                if (command == "files")
+                {
+                    ApplicationConfiguration.Initialize();
+                    string title = values.Get("title") ?? "Torrent";
+                    Application.Run(new FileListForm(resolved, title));
+                    return;
+                }
+
+                args = ReplaceSource(args, resolved);
             }
             catch (Exception ex)
             {
+                ApplicationConfiguration.Initialize();
                 MessageBox.Show(ex.Message, "VideoShelf", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Environment.ExitCode = 1;
+                return;
             }
-            return;
         }
 
         MethodInfo? original = typeof(Program).GetMethod("Main", BindingFlags.Static | BindingFlags.NonPublic);
@@ -36,5 +47,17 @@ internal static class EntryPoint
         {
             throw ex.InnerException;
         }
+    }
+
+    static string[] ReplaceSource(string[] args, string source)
+    {
+        string[] rewritten = (string[])args.Clone();
+        for (int i = 0; i < rewritten.Length - 1; i++)
+        {
+            if (!rewritten[i].Equals("--source", StringComparison.OrdinalIgnoreCase)) continue;
+            rewritten[i + 1] = source;
+            return rewritten;
+        }
+        return rewritten;
     }
 }
