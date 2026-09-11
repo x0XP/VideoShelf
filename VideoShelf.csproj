@@ -49,6 +49,7 @@
     <Compile Include="PortraitLookup.cs" />
     <Compile Include="OnlineSearch.cs" />
     <Compile Include="BuiltInOnlineSearch.cs" />
+    <Compile Include="SearchRelevance.cs" />
     <Compile Include="OnlineThumbnailLookup.cs" />
   </ItemGroup>
   <ItemGroup>
