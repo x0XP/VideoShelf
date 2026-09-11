@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace VideoShelf {
 sealed partial class Shelf {
  bool finalPolishApplied,homePolishApplied;
- MockupFilter sourceVisual,categoryVisual,resolutionVisual,sortVisual;
+ MockupFilter sourceVisual,categoryVisual,resolutionVisual,languageVisual,sortVisual;
  InspectorMetadataView inspectorMetadataVisual;
  SearchScrollRail onlineRail;
 
@@ -24,7 +24,8 @@ sealed partial class Shelf {
   sourceVisual=CreateFilter(sourceFilter);
   categoryVisual=CreateFilter(categoryFilter);
   resolutionVisual=CreateFilter(resolution);
-  sourceFilter.Visible=false;categoryFilter.Visible=false;resolution.Visible=false;
+  languageVisual=CreateFilter(languageFilter);
+  sourceFilter.Visible=false;categoryFilter.Visible=false;resolution.Visible=false;languageFilter.Visible=false;
 
   inspectorMetadataVisual=new InspectorMetadataView();
   inspectorMetadataVisual.RawText=inspectorMeta.Text;
@@ -50,6 +51,7 @@ sealed partial class Shelf {
   if(sourceVisual!=null){sourceVisual.Bounds=sourceFilter.Bounds;sourceVisual.BringToFront();}
   if(categoryVisual!=null){categoryVisual.Bounds=categoryFilter.Bounds;categoryVisual.BringToFront();}
   if(resolutionVisual!=null){resolutionVisual.Bounds=resolution.Bounds;resolutionVisual.BringToFront();}
+  if(languageVisual!=null){languageVisual.Bounds=languageFilter.Bounds;languageVisual.BringToFront();}
   if(inspectorMetadataVisual!=null){
    inspectorMetadataVisual.Bounds=inspectorMeta.Bounds;
    inspectorMetadataVisual.BringToFront();
