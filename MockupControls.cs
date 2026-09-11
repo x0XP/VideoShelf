@@ -97,6 +97,37 @@ sealed class OnlineResultCard : Control {
 }
 
 static class MetadataLabels {
+ static bool Match(string title,string pattern){return Regex.IsMatch(title??"",pattern,RegexOptions.IgnoreCase|RegexOptions.CultureInvariant);}
+ static void AddLanguage(List<string> matches,string title,string language,string pattern){if(Match(title,pattern)&&!matches.Contains(language))matches.Add(language);}
+ public static string Language(string title){
+  string t=title??"";
+  if(Match(t,@"\b(dual[ ._-]?audio|multi[ ._-]?(audio|dub|language|lang|sub|subs))\b"))return "Multi-language";
+  var matches=new List<string>();
+  AddLanguage(matches,t,"English",@"\b(english|eng|en[ ._-]?(audio|dub|subs?))\b");
+  AddLanguage(matches,t,"Japanese",@"\b(japanese|jpn|jp[ ._-]?(audio|dub|subs?))\b");
+  AddLanguage(matches,t,"Spanish",@"\b(spanish|spa|esp|latino|castellano)\b");
+  AddLanguage(matches,t,"French",@"\b(french|fre|fra)\b");
+  AddLanguage(matches,t,"German",@"\b(german|ger|deu)\b");
+  AddLanguage(matches,t,"Italian",@"\b(italian|ita)\b");
+  AddLanguage(matches,t,"Portuguese",@"\b(portuguese|por|pt[ ._-]?br|brazilian)\b");
+  AddLanguage(matches,t,"Korean",@"\b(korean|kor)\b");
+  AddLanguage(matches,t,"Chinese",@"\b(chinese|chi|zho|chs|cht|mandarin|cantonese)\b");
+  AddLanguage(matches,t,"Russian",@"\b(russian|rus)\b");
+  AddLanguage(matches,t,"Hindi",@"\b(hindi|hin)\b");
+  AddLanguage(matches,t,"Arabic",@"\b(arabic|ara)\b");
+  AddLanguage(matches,t,"Thai",@"\b(thai|tha)\b");
+  AddLanguage(matches,t,"Dutch",@"\b(dutch|nld|dut)\b");
+  AddLanguage(matches,t,"Polish",@"\b(polish|pol)\b");
+  AddLanguage(matches,t,"Turkish",@"\b(turkish|tur)\b");
+  AddLanguage(matches,t,"Indonesian",@"\b(indonesian|ind|bahasa)\b");
+  return matches.Count>1?"Multi-language":matches.Count==1?matches[0]:"Unspecified";
+ }
+ public static bool MatchesLanguage(string title,string filter){
+  if(string.IsNullOrWhiteSpace(filter)||filter.Equals("All languages",StringComparison.OrdinalIgnoreCase))return true;
+  string language=Language(title);
+  if(filter.Equals("English",StringComparison.OrdinalIgnoreCase))return language.Equals("English",StringComparison.OrdinalIgnoreCase)||language.Equals("Multi-language",StringComparison.OrdinalIgnoreCase)||language.Equals("Unspecified",StringComparison.OrdinalIgnoreCase);
+  return language.Equals(filter,StringComparison.OrdinalIgnoreCase);
+ }
  public static string[] Tags(string title,string resolution){
   var tags=new List<string>();string t=title??"";
   if(Regex.IsMatch(t,@"\b(OVA|OAV)\b",RegexOptions.IgnoreCase))tags.Add("OVA");
