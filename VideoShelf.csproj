@@ -10,6 +10,7 @@
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <ApplicationIcon>VideoShelfApp.ico</ApplicationIcon>
+    <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)BuildBrandAssets.ps1&quot; -OutputDir &quot;$(ProjectDir)&quot;</PreBuildEvent>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <Optimize>true</Optimize>
@@ -52,8 +53,7 @@
     <Compile Include="OnlineThumbnailLookup.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="VideoShelf.ico" />
-    <None Include="VideoShelfApp.ico" />
+    <None Include="BuildBrandAssets.ps1" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
