@@ -7,7 +7,11 @@ internal sealed class FullscreenPlayerController : IDisposable
     readonly Panel bottomBar;
     readonly SeekBar seek;
     readonly Label timeLabel;
-    readonly Button fullScreen;
+    readonly Button sourcePlayPause;
+    readonly Button? sourceStop;
+    readonly PlayerIconButton playPause;
+    readonly PlayerIconButton fullScreen;
+    readonly ToolTip toolTip = new();
     FormBorderStyle savedBorderStyle;
     FormWindowState savedWindowState;
     Rectangle savedBounds;
@@ -22,16 +26,39 @@ internal sealed class FullscreenPlayerController : IDisposable
         bottomBar = form.Controls.OfType<Panel>().First(p => p.Dock == DockStyle.Bottom);
         seek = bottomBar.Controls.OfType<SeekBar>().First();
         timeLabel = bottomBar.Controls.OfType<Label>().First();
-        fullScreen = Theme.Button("Full screen", 110);
+
+        sourcePlayPause = bottomBar.Controls.OfType<Button>()
+            .FirstOrDefault(b => b.Text.Equals("Play", StringComparison.OrdinalIgnoreCase) || b.Text.Equals("Pause", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("Streaming player play/pause control was not found.");
+        sourceStop = bottomBar.Controls.OfType<Button>()
+            .FirstOrDefault(b => b.Text.Equals("Stop", StringComparison.OrdinalIgnoreCase));
+
+        sourcePlayPause.TabStop = false;
+        if (sourceStop != null)
+        {
+            sourceStop.Visible = false;
+            sourceStop.TabStop = false;
+        }
+
+        playPause = new PlayerIconButton();
+        fullScreen = new PlayerIconButton { IconKind = PlayerIconKind.FullScreen };
+        playPause.AccessibleName = "Play or pause";
         fullScreen.AccessibleName = "Toggle full screen";
-        fullScreen.TabStop = true;
+        bottomBar.Controls.Add(playPause);
         bottomBar.Controls.Add(fullScreen);
+
+        UpdatePlayPauseIcon();
+        toolTip.SetToolTip(playPause, sourcePlayPause.Text.Equals("Pause", StringComparison.OrdinalIgnoreCase) ? "Pause" : "Play");
+        toolTip.SetToolTip(fullScreen, "Full screen");
 
         form.KeyPreview = true;
         form.KeyDown += OnKeyDown;
         form.Resize += OnResize;
         form.FormClosed += OnFormClosed;
+        playPause.Click += OnPlayPauseClick;
         fullScreen.Click += OnFullScreenClick;
+        sourcePlayPause.TextChanged += OnSourcePlayPauseChanged;
+        sourcePlayPause.EnabledChanged += OnSourcePlayPauseChanged;
         HookDoubleClick(form);
         RelayoutControls();
     }
@@ -40,6 +67,24 @@ internal sealed class FullscreenPlayerController : IDisposable
     {
         if (form == null) throw new ArgumentNullException(nameof(form));
         return new FullscreenPlayerController(form);
+    }
+
+    void OnPlayPauseClick(object? sender, EventArgs e)
+    {
+        if (!sourcePlayPause.Enabled) return;
+        sourcePlayPause.PerformClick();
+        UpdatePlayPauseIcon();
+    }
+
+    void OnSourcePlayPauseChanged(object? sender, EventArgs e) => UpdatePlayPauseIcon();
+
+    void UpdatePlayPauseIcon()
+    {
+        bool pausedAction = sourcePlayPause.Text.Equals("Pause", StringComparison.OrdinalIgnoreCase);
+        playPause.IconKind = pausedAction ? PlayerIconKind.Pause : PlayerIconKind.Play;
+        playPause.Enabled = sourcePlayPause.Enabled;
+        playPause.AccessibleName = pausedAction ? "Pause" : "Play";
+        toolTip.SetToolTip(playPause, pausedAction ? "Pause" : "Play");
     }
 
     void OnFullScreenClick(object? sender, EventArgs e) => ToggleFullScreen();
@@ -97,7 +142,9 @@ internal sealed class FullscreenPlayerController : IDisposable
         form.Bounds = screen;
         topBar.Visible = false;
         bottomBar.Visible = true;
-        fullScreen.Text = "Exit full screen";
+        fullScreen.IconKind = PlayerIconKind.ExitFullScreen;
+        fullScreen.AccessibleName = "Exit full screen";
+        toolTip.SetToolTip(fullScreen, "Exit full screen");
         form.ResumeLayout(true);
         isFullScreen = true;
         RelayoutControls();
@@ -113,7 +160,9 @@ internal sealed class FullscreenPlayerController : IDisposable
         form.WindowState = FormWindowState.Normal;
         if (!savedBounds.IsEmpty) form.Bounds = savedBounds;
         form.WindowState = savedWindowState;
-        fullScreen.Text = "Full screen";
+        fullScreen.IconKind = PlayerIconKind.FullScreen;
+        fullScreen.AccessibleName = "Full screen";
+        toolTip.SetToolTip(fullScreen, "Full screen");
         form.ResumeLayout(true);
         isFullScreen = false;
         RelayoutControls();
@@ -124,12 +173,21 @@ internal sealed class FullscreenPlayerController : IDisposable
     void RelayoutControls()
     {
         if (disposed || bottomBar.IsDisposed) return;
-        int timeWidth = 150;
-        int timeX = Math.Max(525, form.ClientSize.Width - 22 - timeWidth);
-        int fullX = 212;
-        fullScreen.SetBounds(fullX, 16, 110, 34);
-        seek.SetBounds(338, 18, Math.Max(170, timeX - 350), 30);
+
+        const int iconWidth = 42;
+        const int timeWidth = 150;
+        int fullX = Math.Max(100, form.ClientSize.Width - 22 - iconWidth);
+        int timeX = Math.Max(230, fullX - 12 - timeWidth);
+        int seekX = 76;
+        int seekWidth = Math.Max(130, timeX - seekX - 12);
+
+        sourcePlayPause.SetBounds(22, 16, iconWidth, 34);
+        playPause.SetBounds(22, 16, iconWidth, 34);
+        seek.SetBounds(seekX, 18, seekWidth, 30);
         timeLabel.SetBounds(timeX, 22, timeWidth, 22);
+        fullScreen.SetBounds(fullX, 16, iconWidth, 34);
+
+        playPause.BringToFront();
         fullScreen.BringToFront();
     }
 
@@ -142,7 +200,12 @@ internal sealed class FullscreenPlayerController : IDisposable
         form.KeyDown -= OnKeyDown;
         form.Resize -= OnResize;
         form.FormClosed -= OnFormClosed;
+        playPause.Click -= OnPlayPauseClick;
         fullScreen.Click -= OnFullScreenClick;
+        sourcePlayPause.TextChanged -= OnSourcePlayPauseChanged;
+        sourcePlayPause.EnabledChanged -= OnSourcePlayPauseChanged;
+        toolTip.Dispose();
+        if (!playPause.IsDisposed) playPause.Dispose();
         if (!fullScreen.IsDisposed) fullScreen.Dispose();
     }
 }
