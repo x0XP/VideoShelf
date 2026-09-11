@@ -220,15 +220,17 @@ sealed partial class Shelf {
   LayoutInspector();if(finalPolishApplied)LayoutFinalPolish();searchView.PerformLayout();ResizeOnlineCards();
  }
  void LayoutSearchToolbar(int width){
-  int margin=17,gap=10,buttonW=92,sourceW=width<1000?112:130,categoryW=136,resW=width<1000?112:126;
-  int fixedWidth=margin*2+gap*4+buttonW+sourceW+categoryW+resW;
-  int queryW=Math.Max(250,Math.Min(480,width-fixedWidth));
+  int compact=width<1000?1:0;
+  int margin=compact==1?12:17,gap=compact==1?6:9,buttonW=compact==1?80:88,sourceW=compact==1?96:118,categoryW=compact==1?105:122,resW=compact==1?98:112,languageW=compact==1?110:124;
+  int fixedWidth=margin*2+gap*5+buttonW+sourceW+categoryW+resW+languageW;
+  int queryW=Math.Max(210,Math.Min(460,width-fixedWidth));
   int x=margin;
   if(queryFrame!=null){queryFrame.SetBounds(x,14,queryW,38);onlineQuery.SetBounds(12,9,Math.Max(80,queryW-60),22);if(queryGlyph!=null)queryGlyph.SetBounds(queryW-40,5,32,28);}x+=queryW+gap;
   sourceFilter.SetBounds(x,13,sourceW,40);x+=sourceW+gap;
   categoryFilter.SetBounds(x,13,categoryW,40);x+=categoryW+gap;
   resolution.SetBounds(x,13,resW,40);x+=resW+gap;
-  searchOnline.SetBounds(x,13,Math.Max(78,Math.Min(buttonW,width-margin-x)),40);
+  languageFilter.SetBounds(x,13,languageW,40);x+=languageW+gap;
+  searchOnline.SetBounds(x,13,Math.Max(72,Math.Min(buttonW,width-margin-x)),40);
   if(finalPolishApplied)LayoutFinalPolish();
  }
  internal void LayoutSearchForCapture(int width,int height){
