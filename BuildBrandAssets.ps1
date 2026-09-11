@@ -134,14 +134,24 @@ function Write-Icon([string]$Path, [int[]]$Sizes) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $runtimeIcon = Join-Path $OutputDir 'VideoShelf.ico'
 $compilerIcon = Join-Path $OutputDir 'VideoShelfApp.ico'
+$brandPng = Join-Path $OutputDir 'VideoShelf.png'
 $installerLogo = Join-Path $OutputDir 'VideoShelfInstallerLogo.bmp'
 
 Write-Icon $runtimeIcon @(16, 24, 32, 48, 64, 96, 128, 256)
 Write-Icon $compilerIcon @(16, 24, 32, 48, 64)
+
+$master = New-BrandBitmap 512 $false
+try { $master.Save($brandPng, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $master.Dispose() }
 
 $installer = New-BrandBitmap 256 $true
 try { $installer.Save($installerLogo, [System.Drawing.Imaging.ImageFormat]::Bmp) } finally { $installer.Dispose() }
 
 if ((Get-Item $runtimeIcon).Length -lt 12000) { throw 'High-resolution VideoShelf icon generation failed.' }
 if ((Get-Item $compilerIcon).Length -lt 3000) { throw 'Compiler VideoShelf icon generation failed.' }
+if ((Get-Item $brandPng).Length -lt 5000) { throw 'Transparent VideoShelf PNG generation failed.' }
+$verifyPng = [System.Drawing.Bitmap]::FromFile($brandPng)
+try {
+  if ($verifyPng.Width -ne 512 -or $verifyPng.Height -ne 512) { throw 'VideoShelf PNG has the wrong dimensions.' }
+  if ($verifyPng.GetPixel(0, 0).A -ne 0) { throw 'VideoShelf PNG background is not transparent.' }
+} finally { $verifyPng.Dispose() }
 if ((Get-Item $installerLogo).Length -lt 10000) { throw 'Installer branding generation failed.' }

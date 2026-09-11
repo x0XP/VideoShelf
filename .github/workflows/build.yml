@@ -23,8 +23,14 @@ jobs:
         shell: powershell
         run: |
           if (!(Test-Path '.\VideoShelf.ico')) { throw 'VideoShelf.ico was not generated.' }
+          if (!(Test-Path '.\VideoShelf.png')) { throw 'VideoShelf.png was not generated.' }
           if ((Get-Item '.\VideoShelf.ico').Length -lt 1000) { throw 'VideoShelf.ico is unexpectedly small.' }
           Add-Type -AssemblyName System.Drawing
+          $brand = [System.Drawing.Bitmap]::FromFile((Resolve-Path '.\VideoShelf.png').Path)
+          try {
+            if ($brand.Width -ne 512 -or $brand.Height -ne 512) { throw 'VideoShelf.png is not the expected 512x512 master asset.' }
+            if ($brand.GetPixel(0, 0).A -ne 0) { throw 'VideoShelf.png does not have a transparent background.' }
+          } finally { $brand.Dispose() }
           function Assert-BrandedIcon([string]$Path) {
             $resolved = (Resolve-Path $Path).Path
             $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($resolved)
@@ -47,6 +53,19 @@ jobs:
       - name: Test folder aliases, metadata parser and search deadline
         shell: cmd
         run: VideoShelf.exe --self-test
+
+      - name: Verify branded application shell renders
+        shell: powershell
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-brand-shell.png'
+          $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--screenshot-home-layout',('"' + $output + '"')) -PassThru -NoNewWindow
+          if (-not $process.WaitForExit(30000)) {
+            $process.Kill(); $process.WaitForExit()
+            throw 'VideoShelf branded shell render exceeded 30 seconds.'
+          }
+          if ($process.ExitCode -ne 0 -or !(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
+            throw "VideoShelf branded shell render failed with exit code $($process.ExitCode)."
+          }
 
       - name: Attempt real built-in Find online screenshot
         id: live_builtin
@@ -86,6 +105,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
           Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
           Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
+          Copy-Item '.\VideoShelf.png' (Join-Path $package 'VideoShelf.png')
           "VIDEOSHELF_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Test MonoTorrent, LibVLC, transfer UI and transfer icon runtime
@@ -165,9 +185,11 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Installer failed with exit code $($process.ExitCode)." }
           $mainExe = Join-Path $installDir 'VideoShelf.exe'
           $iconFile = Join-Path $installDir 'VideoShelf.ico'
+          $brandPng = Join-Path $installDir 'VideoShelf.png'
           $transferExe = Join-Path $installDir 'TransferHost\VideoShelf.TransferHost.exe'
           if (!(Test-Path $mainExe)) { throw 'Installed VideoShelf.exe was not found.' }
           if (!(Test-Path $iconFile)) { throw 'Installed VideoShelf.ico was not found.' }
+          if (!(Test-Path $brandPng)) { throw 'Installed VideoShelf.png was not found.' }
           if (!(Test-Path $transferExe)) { throw 'Installed TransferHost runtime was not found.' }
           $selfTest = Start-Process -FilePath $mainExe -ArgumentList '--self-test' -WorkingDirectory $installDir -Wait -PassThru
           if ($selfTest.ExitCode -ne 0) { throw "Installed VideoShelf self-test failed with exit code $($selfTest.ExitCode)." }

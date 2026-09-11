@@ -18,6 +18,10 @@ if not exist "VideoShelf.ico" (
  echo VideoShelf icon asset is missing.
  exit /b 1
 )
+if not exist "VideoShelf.png" (
+ echo VideoShelf transparent branding asset is missing.
+ exit /b 1
+)
 if not exist "VideoShelfApp.ico" (
  echo VideoShelf compiler icon asset is missing.
  exit /b 1

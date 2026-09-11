@@ -58,6 +58,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 [Files]
 Source: "{#SourceDir}\VideoShelf.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\VideoShelf.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\VideoShelf.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\TransferHost\*"; DestDir: "{app}\TransferHost"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\VideoShelfInstallerLogo.bmp"; Flags: dontcopy
 
