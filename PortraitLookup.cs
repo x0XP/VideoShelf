@@ -27,8 +27,7 @@ static class PortraitLookup {
  static HttpClient CreateClient(){ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(15)};c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.4");return c;}
  static string Key(string name){using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(name.Trim().ToLowerInvariant()))).Replace("-","");}
  static string FileFor(string name){return Path.Combine(cache,Key(name)+".jpg");}
- static bool PreferCover(string name){return (name??"").IndexOf(':')>=0;}
- static string PrimaryQuery(string name){return PreferCover(name)?name+" cover artwork":name+" portrait headshot";}
+ static string PrimaryQuery(string name){return (name??"").Trim();}
  public static string SearchUrl(string name){return SearchUrlFor(PrimaryQuery(name));}
  static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=1";}
  public static void Forget(string name){string f=FileFor(name);if(File.Exists(f))File.Delete(f);if(File.Exists(f+".source"))File.Delete(f+".source");}
@@ -48,12 +47,12 @@ static class PortraitLookup {
  }
  static string Value(Dictionary<string,object> row,string key){object v;return row.TryGetValue(key,out v)&&v!=null?v.ToString():"";}
  static string[] MatchWords(string name){return Regex.Matches(name??"",@"[A-Za-z0-9]+",RegexOptions.IgnoreCase).Cast<Match>().Select(m=>m.Value).Where(x=>x.Length>1).ToArray();}
- static async Task<PortraitResult> SearchOne(string name,string query,bool photoOnly,CancellationToken ct){
+ static async Task<PortraitResult> SearchOne(string name,string query,CancellationToken ct){
   string html=Encoding.UTF8.GetString(await Get(SearchUrlFor(query),2*1024*1024,ct).ConfigureAwait(false));
   if(html.IndexOf("anomaly.js",StringComparison.OrdinalIgnoreCase)>=0||html.IndexOf("challenge-form",StringComparison.OrdinalIgnoreCase)>=0)throw new LookupBlockedException("DuckDuckGo needs a browser check. Use Search images from the card menu.");
   Match token=Regex.Match(html,"vqd=['\"](?<token>[0-9-]+)['\"]");
   if(!token.Success)throw new InvalidDataException("DuckDuckGo did not provide image search data.");
-  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+(photoOnly?"&f=,,,type:photo,,":"")+"&p=1";
+  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=1";
   string json=Encoding.UTF8.GetString(await Get(endpoint,2*1024*1024,ct).ConfigureAwait(false));
   var payload=new JavaScriptSerializer{MaxJsonLength=2*1024*1024}.Deserialize<Dictionary<string,object>>(json);
   object rows;if(payload==null||!payload.TryGetValue("results",out rows))return null;
@@ -74,14 +73,10 @@ static class PortraitLookup {
    if(File.Exists(f))try{return new PortraitResult{Photo=Decode(File.ReadAllBytes(f)),FromCache=true,Source=File.Exists(f+".source")?File.ReadAllText(f+".source"):"Cached image"};}catch{}
    if(DateTime.UtcNow<blockedUntil)return new PortraitResult{Error="Automatic lookup paused after an access check. Use Search images from the card menu."};
    await Task.Delay(1200,ct).ConfigureAwait(false);
-   PortraitResult result;
-   if(PreferCover(name)){
-    result=await SearchOne(name,name+" cover artwork",false,ct).ConfigureAwait(false);
-    if(result==null)result=await SearchOne(name,name+" anime",false,ct).ConfigureAwait(false);
-   }else{
-    result=await SearchOne(name,name+" portrait headshot",true,ct).ConfigureAwait(false);
-    if(result==null)result=await SearchOne(name,name+" cover artwork",false,ct).ConfigureAwait(false);
-   }
+   string query=PrimaryQuery(name);
+   PortraitResult result=await SearchOne(name,query,ct).ConfigureAwait(false);
+   if(result==null)result=await SearchOne(name,query+" artwork",ct).ConfigureAwait(false);
+   if(result==null)result=await SearchOne(name,query+" image",ct).ConfigureAwait(false);
    if(result!=null)return result;
    return new PortraitResult{Error="No usable matching image found. Right-click to choose an image."};
   }catch(LookupBlockedException ex){blockedUntil=DateTime.UtcNow.AddMinutes(10);return new PortraitResult{Error=ex.Message};}catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;return new PortraitResult{Error="Image lookup timed out. Right-click to retry."};}catch(Exception ex){return new PortraitResult{Error=ex.Message};}finally{gate.Release();}
