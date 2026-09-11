@@ -8,6 +8,7 @@ sealed partial class Shelf {
  MockupFilter sourceVisual,categoryVisual,resolutionVisual,languageVisual,sortVisual;
  InspectorMetadataView inspectorMetadataVisual;
  SearchScrollRail onlineRail;
+ const int SearchFilterHeight=40;
 
  void ApplyHomePolish(){
   if(homePolishApplied)return;
@@ -46,12 +47,17 @@ sealed partial class Shelf {
   if(parent!=null){parent.Controls.Add(visual);visual.BringToFront();}
   return visual;
  }
+ void LayoutSearchFilter(MockupFilter visual,ComboBox combo){
+  if(visual==null||combo==null)return;
+  visual.SetBounds(combo.Left,combo.Top,combo.Width,SearchFilterHeight);
+  visual.BringToFront();
+ }
  void LayoutFinalPolish(){
   if(!finalPolishApplied)return;
-  if(sourceVisual!=null){sourceVisual.Bounds=sourceFilter.Bounds;sourceVisual.BringToFront();}
-  if(categoryVisual!=null){categoryVisual.Bounds=categoryFilter.Bounds;categoryVisual.BringToFront();}
-  if(resolutionVisual!=null){resolutionVisual.Bounds=resolution.Bounds;resolutionVisual.BringToFront();}
-  if(languageVisual!=null){languageVisual.Bounds=languageFilter.Bounds;languageVisual.BringToFront();}
+  LayoutSearchFilter(sourceVisual,sourceFilter);
+  LayoutSearchFilter(categoryVisual,categoryFilter);
+  LayoutSearchFilter(resolutionVisual,resolution);
+  LayoutSearchFilter(languageVisual,languageFilter);
   if(inspectorMetadataVisual!=null){
    inspectorMetadataVisual.Bounds=inspectorMeta.Bounds;
    inspectorMetadataVisual.BringToFront();
