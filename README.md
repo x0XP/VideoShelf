@@ -1,15 +1,15 @@
 # VideoShelf
 
-VideoShelf is a lightweight Windows desktop video library browser built with C# WinForms. It treats each immediate subfolder of a chosen library directory as a person/collection, shows an artwork card for that folder, finds local videos recursively, and can optionally search a user-configured torrent-metadata source.
+VideoShelf is a lightweight Windows desktop video library browser built with C# WinForms. It treats each immediate subfolder of a chosen library directory as a collection, shows an artwork card for that folder, finds local videos recursively, and can optionally search a user-configured torrent-metadata source.
 
 ## Current baseline — v1.7
 
 - Full Xdolf-inspired VideoShelf shell with custom title/status bars and permanent Home, Search, Collections, Downloads, Streaming and Settings navigation.
 - Xdolf-style dark palette, owner-drawn tooltips, collection cards, filters, metadata surfaces, action controls, headers and scrollbars.
-- Folder-per-person/collection library with recursive local video discovery.
+- Folder-per-collection library with recursive local video discovery.
 - **+ Add collection** directly inside the app, with Ctrl+N shortcut.
 - Exact display names are preserved even when Windows forbids a character in the physical folder name. For example, entering `re:zero` creates a safe disk folder but VideoShelf still displays and searches for `re:zero`.
-- Portrait/artwork lookup through DuckDuckGo Images, local cache, manual override, and browser fallback.
+- Collection artwork lookup through DuckDuckGo Images, local cache, manual override, and browser fallback.
 - Local video playback through the Windows default player.
 - Optional online torrent-metadata search rendered as stacked result cards with title, artwork, tags, resolution, size, seeders, leechers, source and publication date.
 - Selected online results appear in a dedicated inspector with aligned metadata and Download, Stream, Copy link and View files actions.
@@ -23,7 +23,6 @@ VideoShelf is a lightweight Windows desktop video library browser built with C# 
 - 2160p/4K, 1080p, 720p, and Other resolution filtering.
 - Search-engine-only result thumbnails through DuckDuckGo Images.
 - Saved Torznab API keys protected with Windows DPAPI.
-- Existing `%LOCALAPPDATA%\PeopleShelf` settings/caches are migrated automatically to `%LOCALAPPDATA%\VideoShelf` on first use.
 
 ## Run
 
@@ -65,7 +64,7 @@ Streaming still requires torrent pieces to be received locally as playback progr
 
 ## Search-engine images
 
-Portraits and online-result thumbnails use DuckDuckGo Images only. This is a public search endpoint rather than an official image API, so automated lookup can occasionally be rate-limited or require a browser check. VideoShelf does not attempt to bypass those checks; cached images remain available and unresolved items keep their placeholder.
+Collection artwork and online-result thumbnails use DuckDuckGo Images only. Collection artwork searches begin with the collection name itself and then use neutral artwork/image fallbacks if needed; they do not request portrait or headshot results. This is a public search endpoint rather than an official image API, so automated lookup can occasionally be rate-limited or require a browser check. VideoShelf does not attempt to bypass those checks; cached images remain available and unresolved items keep their placeholder.
 
 ## Source layout
 
@@ -74,7 +73,7 @@ Portraits and online-result thumbnails use DuckDuckGo Images only. This is a pub
 - `Shelf.Layout.cs` — responsive mock-up shell, Search/Inspector positioning and navigation layout
 - `Shelf.Visuals.cs` — owner-drawn inputs and local-video ListView styling
 - `Shelf.Polish.cs` — dark filter, inspector, Home-sort and scrollbar polish
-- `Shelf.Library.cs` — local library scanning, portraits, navigation, and folder creation
+- `Shelf.Library.cs` — local library scanning, collection artwork, navigation, and folder creation
 - `Shelf.Online.cs` — metadata result rendering and View files / Download / Stream actions
 - `MockupControls.cs` — Xdolf-inspired navigation and online-result controls
 - `MockupFilter.cs` — dark filters, inspector metadata and scrollbar helpers
@@ -82,12 +81,12 @@ Portraits and online-result thumbnails use DuckDuckGo Images only. This is a pub
 - `TransferBridge.cs` — launches the bundled VideoShelf transfer runtime from the lightweight WinForms shell
 - `TransferHost/` — .NET 8 MonoTorrent + LibVLC download, metadata-inspection and embedded streaming runtime
 - `FolderManagement.cs` — safe folder creation, display-name aliases, and the `re:zero` self-test
-- `PortraitLookup.cs` — portrait/artwork search and cache
+- `PortraitLookup.cs` — collection artwork search and cache
 - `OnlineSearch.cs` — metadata-source search/settings
 - `OnlineThumbnailLookup.cs` — search-engine result thumbnails
 - `XdolfTheme.cs` — shared Xdolf-inspired palette, controls and tooltip rendering
 - `ScreenshotHarness.cs` — deterministic compiled-UI captures plus optional real artwork/live metadata proofs
-- `AppDataPaths.cs` — VideoShelf data paths and one-time PeopleShelf migration
+- `AppDataPaths.cs` — VideoShelf data paths and legacy-data migration
 - `Start.cmd` — main compiler/launcher and optional local TransferHost publish
 - `VideoShelf.csproj` — .NET Framework 4.8 main app project
 
