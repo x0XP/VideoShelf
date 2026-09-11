@@ -148,7 +148,7 @@ internal static class TorrentVideoSelection
         if (exact < 0 || !ordered[exact].Contains("S03E05", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Episode-aware torrent selection failed the Breaking Bad S03E05 regression case.");
 
-        string[] complete =
+        string[] complete = new[]
         {
             "Extras/Trailer.mkv",
             "Season 02/Breaking.Bad.S02E01.mkv",
@@ -159,7 +159,7 @@ internal static class TorrentVideoSelection
         if (first < 0 || !complete[first].Contains("S01E01", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Complete-series torrent selection did not start at the first real episode.");
 
-        string[] seasonPack =
+        string[] seasonPack = new[]
         {
             "Season 01/Breaking.Bad.S01E01.mkv",
             "Season 02/Breaking.Bad.S02E02.mkv",
