@@ -9,7 +9,7 @@ using MonoTorrent.Client;
 
 namespace VideoShelf.TransferHost;
 
-internal sealed class StreamingTorrentSession : IAsyncDisposable
+internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
 {
     const int MaxMetadataBytes = 16 * 1024 * 1024;
     static readonly HttpClient Http = CreateHttp();
@@ -117,6 +117,8 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable
         Engine.Dispose();
         if (metadataFile != null) try { File.Delete(metadataFile); } catch { }
     }
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     public static void SelfTest()
     {
