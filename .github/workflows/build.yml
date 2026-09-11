@@ -63,8 +63,11 @@ jobs:
             $process.Kill(); $process.WaitForExit()
             throw 'VideoShelf branded shell render exceeded 30 seconds.'
           }
-          if ($process.ExitCode -ne 0 -or !(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
-            throw "VideoShelf branded shell render failed with exit code $($process.ExitCode)."
+          $process.WaitForExit()
+          $process.Refresh()
+          $exitCode = $process.ExitCode
+          if ($exitCode -ne 0 -or !(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
+            throw "VideoShelf branded shell render failed with exit code $exitCode."
           }
 
       - name: Attempt real built-in Find online screenshot
