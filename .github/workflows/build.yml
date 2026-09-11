@@ -56,25 +56,25 @@ jobs:
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-built-in.png'
           $argumentList = @('--screenshot-built-in-online','"re:zero"','"re zero"',('"' + $output + '"'),'1')
           $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
-          if (-not $process.WaitForExit(25000)) {
+          if (-not $process.WaitForExit(65000)) {
             $process.Kill()
             $process.WaitForExit()
             "status=timeout" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Warning 'Built-in Find online screenshot exceeded 25 seconds.'
+            Write-Warning 'Built-in Find online artwork-complete screenshot exceeded 65 seconds.'
             exit 1
           }
           if ($process.ExitCode -ne 0 -or !(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
             "status=unavailable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Warning "Built-in Find online screenshot failed with exit code $($process.ExitCode). Public metadata sources may be unavailable."
+            Write-Warning "Built-in Find online screenshot failed with exit code $($process.ExitCode). Public metadata or image sources may be unavailable; placeholder artwork is not captured."
             exit 1
           }
           "status=ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Host 'Built-in Find online returned and rendered at least one valid seeded result.'
+          Write-Host 'Built-in Find online rendered seeded results with complete visible artwork.'
 
       - name: Fail if built-in Find online hung
         if: always() && steps.live_builtin.outputs.status == 'timeout'
         shell: powershell
-        run: throw 'Built-in Find online exceeded its hard deadline. This is an application regression, not an optional public-source outage.'
+        run: throw 'Built-in Find online capture exceeded its hard deadline. This is an application regression, not an optional public-source outage.'
 
       - name: Publish bundled download and streaming runtime
         shell: powershell
