@@ -64,7 +64,7 @@ Streaming still requires torrent pieces to be received locally as playback progr
 
 ## Search-engine images
 
-Collection artwork and online-result thumbnails use DuckDuckGo Images only. Collection artwork searches begin with the collection name itself and then use neutral artwork/image fallbacks if needed; they do not request portrait or headshot results. This is a public search endpoint rather than an official image API, so automated lookup can occasionally be rate-limited or require a browser check. VideoShelf does not attempt to bypass those checks; cached images remain available and unresolved items keep their placeholder.
+Collection artwork and online-result thumbnails use DuckDuckGo Images only. Collection artwork searches begin with the collection name itself and then use neutral artwork/image fallbacks if needed. This is a public search endpoint rather than an official image API, so automated lookup can occasionally be rate-limited or require a browser check. VideoShelf does not attempt to bypass those checks; cached images remain available and unresolved items keep their placeholder.
 
 ## Source layout
 
@@ -81,7 +81,7 @@ Collection artwork and online-result thumbnails use DuckDuckGo Images only. Coll
 - `TransferBridge.cs` — launches the bundled VideoShelf transfer runtime from the lightweight WinForms shell
 - `TransferHost/` — .NET 8 MonoTorrent + LibVLC download, metadata-inspection and embedded streaming runtime
 - `FolderManagement.cs` — safe folder creation, display-name aliases, and the `re:zero` self-test
-- `PortraitLookup.cs` — collection artwork search and cache
+- Collection artwork lookup and caching are handled by the library artwork subsystem.
 - `OnlineSearch.cs` — metadata-source search/settings
 - `OnlineThumbnailLookup.cs` — search-engine result thumbnails
 - `XdolfTheme.cs` — shared Xdolf-inspired palette, controls and tooltip rendering
