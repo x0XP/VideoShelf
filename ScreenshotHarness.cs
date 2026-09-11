@@ -97,7 +97,10 @@ sealed partial class Shelf {
  void ValidateMockupState(){
   if(onlineResults.Count!=24||onlineResults.Any(r=>r.Seeders<=0))throw new InvalidOperationException("Mockup search state failed the seeded-result invariant.");
   if(onlineCards.Controls.OfType<OnlineResultCard>().Count()!=24||selectedOnline==null)throw new InvalidOperationException("Mockup search cards were not rendered correctly.");
-  if(sourceVisual==null||categoryVisual==null||resolutionVisual==null||sourceFilter.Visible||categoryFilter.Visible||resolution.Visible)throw new InvalidOperationException("Dark search filters are not active.");
+  if(sourceVisual==null||categoryVisual==null||resolutionVisual==null||languageVisual==null||sourceFilter.Visible||categoryFilter.Visible||resolution.Visible||languageFilter.Visible)throw new InvalidOperationException("Dark search filters are not active.");
+  if(languageFilter.SelectedItem==null||!languageFilter.SelectedItem.ToString().Equals("English",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Language filter must default to English.");
+  if(!languageFilter.Items.Contains("All languages")||!languageFilter.Items.Contains("Japanese")||!languageFilter.Items.Contains("Spanish")||!languageFilter.Items.Contains("Multi-language")||!languageFilter.Items.Contains("Unspecified"))throw new InvalidOperationException("Language filter options are incomplete.");
+  if(!MetadataLabels.MatchesLanguage("Example release [English]","English")||MetadataLabels.MatchesLanguage("Example release [Japanese]","English")||!MetadataLabels.MatchesLanguage("Example release [Japanese]","Japanese")||!MetadataLabels.MatchesLanguage("Example release [Dual Audio]","English")||!MetadataLabels.MatchesLanguage("Example release","English"))throw new InvalidOperationException("Language filter classification regression detected.");
   if(inspectorMetadataVisual==null||inspectorMeta.Visible||downloadVisual==null||streamVisual==null||!downloadVisual.Enabled||!streamVisual.Enabled)throw new InvalidOperationException("Result inspector actions are not active.");
   if(inspectorTags.Height<56)throw new InvalidOperationException("Inspector tags do not have enough height to display wrapped metadata tags.");
  }
