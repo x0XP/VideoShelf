@@ -21,6 +21,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Text;
 
 public static class InstallerWindowCapture
 {
@@ -33,11 +34,42 @@ public static class InstallerWindowCapture
         public int Bottom;
     }
 
+    delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
     [DllImport("user32.dll")]
     static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
     [DllImport("user32.dll")]
     static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
+
+    [DllImport("user32.dll")]
+    static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    public static IntPtr FindWindow(string titleFragment)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((hWnd, lParam) =>
+        {
+            if (!IsWindowVisible(hWnd))
+                return true;
+
+            var title = new StringBuilder(512);
+            GetWindowText(hWnd, title, title.Capacity);
+            if (title.ToString().IndexOf(titleFragment, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                found = hWnd;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
 
     public static void Save(IntPtr hWnd, string path)
     {
@@ -70,21 +102,41 @@ public static class InstallerWindowCapture
 '@
 
 function Wait-MainWindow {
-    param([System.Diagnostics.Process]$Process, [int]$TimeoutSeconds = 30)
+    param([System.Diagnostics.Process]$Bootstrap, [int]$TimeoutSeconds = 30)
 
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
-        if ($Process.HasExited) {
-            throw "Installer exited before its window became available (exit code $($Process.ExitCode))."
+        if (-not $Bootstrap.HasExited) {
+            $Bootstrap.Refresh()
+            if ($Bootstrap.MainWindowHandle -ne [IntPtr]::Zero) {
+                return $Bootstrap.MainWindowHandle
+            }
         }
-        $Process.Refresh()
-        if ($Process.MainWindowHandle -ne [IntPtr]::Zero) {
-            return $Process.MainWindowHandle
+
+        # Inno Setup launches a temporary child executable which owns the real wizard
+        # window. Find it by title rather than assuming the bootstrap process owns it.
+        $handle = [InstallerWindowCapture]::FindWindow('VideoShelf Setup')
+        if ($handle -ne [IntPtr]::Zero) {
+            return $handle
         }
+
         Start-Sleep -Milliseconds 150
     } while ([DateTime]::UtcNow -lt $deadline)
 
-    throw 'Timed out waiting for the installer window.'
+    throw 'Timed out waiting for the VideoShelf Setup window.'
+}
+
+function Get-CurrentWindow {
+    param([System.Diagnostics.Process]$Bootstrap)
+
+    if (-not $Bootstrap.HasExited) {
+        $Bootstrap.Refresh()
+        if ($Bootstrap.MainWindowHandle -ne [IntPtr]::Zero) {
+            return $Bootstrap.MainWindowHandle
+        }
+    }
+
+    return [InstallerWindowCapture]::FindWindow('VideoShelf Setup')
 }
 
 function Get-Root {
@@ -201,20 +253,19 @@ $args = @(
     ('/DIR="' + $visualInstallDir + '"')
 )
 
-$process = Start-Process -FilePath $Installer -ArgumentList $args -PassThru
-$handle = Wait-MainWindow -Process $process
+$bootstrap = Start-Process -FilePath $Installer -ArgumentList $args -PassThru
+$handle = Wait-MainWindow -Bootstrap $bootstrap
 $captured = @{}
 $finished = $false
 
 try {
-    for ($step = 0; $step -lt 12 -and -not $finished; $step++) {
+    for ($step = 0; $step -lt 14 -and -not $finished; $step++) {
         Start-Sleep -Milliseconds 500
-        if ($process.HasExited) { break }
 
-        $process.Refresh()
-        $handle = $process.MainWindowHandle
+        $handle = Get-CurrentWindow -Bootstrap $bootstrap
         if ($handle -eq [IntPtr]::Zero) {
-            $handle = Wait-MainWindow -Process $process
+            if ($bootstrap.HasExited) { break }
+            $handle = Wait-MainWindow -Bootstrap $bootstrap -TimeoutSeconds 10
         }
 
         $root = Get-Root -Handle $handle
@@ -232,10 +283,11 @@ try {
             $deadline = [DateTime]::UtcNow.AddSeconds(120)
             do {
                 Start-Sleep -Milliseconds 500
-                if ($process.HasExited) { break }
-                $process.Refresh()
-                $handle = $process.MainWindowHandle
-                if ($handle -eq [IntPtr]::Zero) { continue }
+                $handle = Get-CurrentWindow -Bootstrap $bootstrap
+                if ($handle -eq [IntPtr]::Zero) {
+                    if ($bootstrap.HasExited) { break }
+                    continue
+                }
                 $root = Get-Root -Handle $handle
                 $text = Get-ControlNames -Root $root
                 if ((Classify-Page -Text $text) -eq 'finish') { break }
@@ -267,9 +319,15 @@ try {
     if (-not $captured.ContainsKey('finish')) { throw 'Finish page was not captured.' }
 }
 finally {
-    if (-not $process.HasExited) {
-        try { $process.Kill() } catch { }
-        try { $process.WaitForExit(5000) | Out-Null } catch { }
+    if (-not $bootstrap.HasExited) {
+        try { $bootstrap.Kill() } catch { }
+        try { $bootstrap.WaitForExit(5000) | Out-Null } catch { }
+    }
+
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.ProcessName -like 'VideoShelf-Setup-v1.7*'
+    } | ForEach-Object {
+        try { $_.Kill() } catch { }
     }
 
     $uninstaller = Join-Path $visualInstallDir 'unins000.exe'
