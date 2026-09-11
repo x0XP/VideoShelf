@@ -17,12 +17,19 @@ internal static class EntryPoint
                 string? page = values.Get("page");
                 string resolved = TransferSourceResolver.ResolveAsync(source, page, CancellationToken.None).GetAwaiter().GetResult();
                 if (string.IsNullOrWhiteSpace(resolved)) throw new InvalidOperationException("This result does not contain usable torrent metadata.");
+                string title = values.Get("title") ?? "Torrent";
 
                 if (command == "files")
                 {
                     ApplicationConfiguration.Initialize();
-                    string title = values.Get("title") ?? "Torrent";
                     Application.Run(new FileListForm(resolved, title));
+                    return;
+                }
+
+                if (command == "stream")
+                {
+                    ApplicationConfiguration.Initialize();
+                    Application.Run(new OptimizedStreamForm(resolved, title));
                     return;
                 }
 
