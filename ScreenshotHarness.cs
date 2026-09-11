@@ -22,7 +22,7 @@ static class ScreenshotHarness {
   string root=Path.Combine(Path.GetTempPath(),"VideoShelf-online-screenshot-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,displayName);Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.PrepareOnlineScreenshot(displayName,query,sourceUrl,expectedResults))throw new Exception("VideoShelf did not receive enough seeded online results from the metadata source.");Settle(shelf);SaveWindow(shelf,outputPath,1366,860);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
  public static void CaptureBuiltInOnlineResults(string displayName,string query,string outputPath,int expectedResults){
-  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-built-in-online-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,displayName);Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.PrepareBuiltInOnlineScreenshot(displayName,query,expectedResults))throw new Exception("VideoShelf built-in Find online did not return enough seeded results.");shelf.WaitForFirstOnlineThumbnailForCapture(6500);Settle(shelf);SaveWindow(shelf,outputPath,1366,860);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
+  string root=Path.Combine(Path.GetTempPath(),"VideoShelf-built-in-online-"+Guid.NewGuid().ToString("N"));try{Directory.CreateDirectory(root);FolderNaming.CreateCollection(root,displayName);Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareScreenshotLibrary(root);if(!shelf.PrepareBuiltInOnlineScreenshot(displayName,query,expectedResults))throw new Exception("VideoShelf built-in Find online did not return enough seeded results.");shelf.LayoutSearchForCapture(1120,796);Application.DoEvents();if(!shelf.WaitForVisibleOnlineThumbnailsForCapture(40000))throw new Exception("Visible online artwork did not finish loading; refusing to save a screenshot containing placeholder artwork.");Settle(shelf);SaveWindow(shelf,outputPath,1366,860);}Verify(outputPath,5000);}finally{try{if(Directory.Exists(root))Directory.Delete(root,true);}catch{}}
  }
  public static void CaptureMockupSearch(string outputPath){Init();using(var shelf=new Shelf()){PrepareWindow(shelf);shelf.PrepareMockupSearch();Settle(shelf);SaveWindow(shelf,outputPath,1366,860);}Verify(outputPath,12000);}
  static void Init(){Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
@@ -77,15 +77,17 @@ sealed partial class Shelf {
  void PrepareOnlineFixtureState(Person person,string query,List<OnlineResult> found,OnlineSettings source,bool allowThumbnails){
   generation++;current=person;onlineSearching=false;onlineError="";onlineQueryFor=query;onlineSettings=source;onlineResults=found;selectedOnline=found.FirstOrDefault();thumbnailsLoading=false;thumbnailsPaused=!allowThumbnails;onlineQuery.Text=query;suppress=true;categoryFilter.SelectedIndex=0;resolution.SelectedIndex=0;suppress=false;RefreshSourceFilter();ShowSection(searchView,ShellSection.Search);RenderOnline();Application.DoEvents();
  }
- internal void WaitForFirstOnlineThumbnailForCapture(int milliseconds){
+ internal bool WaitForVisibleOnlineThumbnailsForCapture(int milliseconds){
   DateTime deadline=DateTime.UtcNow.AddMilliseconds(Math.Max(0,milliseconds));
   while(DateTime.UtcNow<deadline&&!IsDisposed){
    Application.DoEvents();
-   var selectedCard=onlineCards.Controls.OfType<OnlineResultCard>().FirstOrDefault(c=>c.Result==selectedOnline);
-   if(selectedCard!=null&&selectedCard.Preview!=null){RenderInspector();Application.DoEvents();return;}
-   if(thumbnailsPaused&&!thumbnailsLoading)return;
+   var visible=onlineCards.Controls.OfType<OnlineResultCard>().Where(c=>c.Bounds.IntersectsWith(onlineCards.ClientRectangle)).ToArray();
+   if(visible.Length>0&&visible.All(c=>c.Preview!=null)){RenderInspector();Application.DoEvents();return true;}
+   if(thumbnailsPaused&&!thumbnailsLoading)return false;
+   if(!thumbnailsLoading&&visible.Length>0&&visible.Any(c=>c.Preview==null))return false;
    Thread.Sleep(75);
   }
+  return false;
  }
  internal void PrepareMockupSearch(){
   generation++;current=new Person{Name="re:zero",Path=Path.Combine(Path.GetTempPath(),"re-zero")};onlineQuery.Text="re:zero";onlineQueryFor="re:zero";onlineError="";onlineSearching=false;thumbnailsPaused=true;thumbnailsLoading=false;onlineResults=new List<OnlineResult>();
