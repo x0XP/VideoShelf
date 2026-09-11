@@ -12,6 +12,8 @@ VideoShelf is a lightweight Windows desktop video library browser built with C# 
 - Collection artwork lookup through DuckDuckGo Images, local cache, manual override, and browser fallback.
 - Local video playback through the Windows default player.
 - Optional online torrent-metadata search rendered as stacked result cards with title, artwork, tags, resolution, size, seeders, leechers, source and publication date.
+- Search results can be filtered by source, category, resolution and language. The language filter defaults to **English**.
+- The English filter keeps releases explicitly marked English, multi-language releases and releases with no language marker, while excluding releases explicitly marked as another supported language. **All languages**, individual languages, **Multi-language** and **Unspecified** are available from the same filter.
 - Selected online results appear in a dedicated inspector with aligned metadata and Download, Stream, Copy link and View files actions.
 - Online discovery is metadata-only. VideoShelf does **not** transfer the referenced video while searching or displaying results.
 - **Download locally** starts a persistent torrent transfer only after the user explicitly chooses it and selects a destination folder.
@@ -44,6 +46,8 @@ VideoShelf does not require a hard-coded indexer in its application logic. Confi
 
 Searching retrieves only the feed/indexer response needed to display the result list, plus small search-engine artwork thumbnails. It does not fetch the referenced video payload. Results are filtered again at render time so an item reporting zero seeders cannot appear.
 
+Language filtering is derived from language markers in release titles. VideoShelf recognises English, Japanese, Spanish, French, German, Italian, Portuguese, Korean, Chinese, Russian, Hindi, Arabic, Thai, Dutch, Polish, Turkish and Indonesian markers, along with multi-language and unspecified releases. The default English view deliberately retains unlabelled releases so ordinary releases that omit an explicit language tag are not hidden.
+
 ## View files
 
 Select a seeded online result and choose **View files** to inspect the torrent contents before starting a transfer. The bundled MonoTorrent runtime resolves the torrent metadata and opens a manifest window. VideoShelf's runtime self-test verifies that the installed MonoTorrent version exposes the metadata-only startup path required for this operation.
@@ -74,8 +78,8 @@ Collection artwork and online-result thumbnails use DuckDuckGo Images only. Coll
 - `Shelf.Visuals.cs` — owner-drawn inputs and local-video ListView styling
 - `Shelf.Polish.cs` — dark filter, inspector, Home-sort and scrollbar polish
 - `Shelf.Library.cs` — local library scanning, collection artwork, navigation, and folder creation
-- `Shelf.Online.cs` — metadata result rendering and View files / Download / Stream actions
-- `MockupControls.cs` — Xdolf-inspired navigation and online-result controls
+- `Shelf.Online.cs` — metadata result rendering, language/source/category/resolution filtering and View files / Download / Stream actions
+- `MockupControls.cs` — Xdolf-inspired navigation, online-result controls and release-language classification
 - `MockupFilter.cs` — dark filters, inspector metadata and scrollbar helpers
 - `MockupActionButton.cs` — large Download/Stream action controls
 - `TransferBridge.cs` — launches the bundled VideoShelf transfer runtime from the lightweight WinForms shell
