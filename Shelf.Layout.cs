@@ -32,8 +32,8 @@ sealed partial class Shelf {
   if(downloadVisual!=null&&streamVisual!=null)return;
   downloadVisual=new MockupActionButton{TitleText="Download locally",SubtitleText="Save to your device",Glyph="\uE896",Accent=XdolfTheme.AccentBlue};
   streamVisual=new MockupActionButton{TitleText="Stream locally",SubtitleText="Play without downloading",Glyph="\uE768",Accent=XdolfTheme.AccentRed};
-  downloadVisual.Click+=delegate{if(downloadOnline.Enabled)downloadOnline.PerformClick();};
-  streamVisual.Click+=delegate{if(streamOnline.Enabled)streamOnline.PerformClick();};
+  downloadVisual.Click+=delegate{if(downloadOnline.Enabled)DownloadOnline();};
+  streamVisual.Click+=delegate{if(streamOnline.Enabled)StreamOnline();};
   downloadOnline.EnabledChanged+=delegate{downloadVisual.Enabled=downloadOnline.Enabled;};
   streamOnline.EnabledChanged+=delegate{streamVisual.Enabled=streamOnline.Enabled;};
   downloadVisual.Enabled=downloadOnline.Enabled;streamVisual.Enabled=streamOnline.Enabled;
