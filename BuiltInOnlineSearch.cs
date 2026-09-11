@@ -36,8 +36,6 @@ static class BuiltInOnlineSearch {
   string normalized=Regex.Replace((query??"").Trim(),@"[^\p{L}\p{N}]+"," ").Trim();
   if(normalized.Length==0)normalized=(query??"").Trim();
 
-  // Isolate every legacy network call from the UI-facing aggregate. A wedged
-  // DNS/TLS request must not be able to keep Find online open indefinitely.
   var pending=Sources
    .Select(source=>Task.Run(()=>SearchSource(source,normalized)))
    .Concat(new[]{Task.Run(()=>SearchApiBay(normalized))})
@@ -47,19 +45,15 @@ static class BuiltInOnlineSearch {
   ct.ThrowIfCancellationRequested();
   var responses=aggregate.Responses;
   var combined=responses.SelectMany(r=>r.Results).Where(r=>r!=null&&r.Seeders>0&&!string.IsNullOrWhiteSpace(r.Link)).ToList();
-  var result=combined
+  var deduplicated=combined
    .GroupBy(r=>string.IsNullOrWhiteSpace(r.Link)?r.Title:r.Link,StringComparer.OrdinalIgnoreCase)
-   .Select(g=>g.OrderByDescending(r=>r.Seeders).First())
-   .OrderByDescending(r=>r.Seeders).ThenByDescending(r=>r.Published).ThenBy(r=>r.Title,StringComparer.OrdinalIgnoreCase).Take(80).ToList();
+   .Select(g=>g.OrderByDescending(r=>r.Seeders).First()).ToList();
+  var result=SearchRelevance.FilterAndRank(normalized,deduplicated).Take(80).ToList();
   if(result.Count==0&&((responses.Count==0&&aggregate.DeadlineReached)||(responses.Count>0&&responses.All(r=>r.Failed))))
    throw new InvalidOperationException("Built-in metadata sources are currently unavailable. You can retry or configure a custom source in Settings.");
   return result;
  }
 
- // This aggregate intentionally does not cancel unfinished source requests when
- // its wall-clock budget expires. On .NET Framework, HttpClient cancellation can
- // synchronously block in DNS/TLS cleanup. We simply stop awaiting stragglers and
- // retain whatever valid source results completed inside the budget.
  static async Task<AggregateResult> CollectWithinDeadline(List<Task<SourceResult>> tasks,TimeSpan budget,CancellationToken ct){
   var result=new AggregateResult();
   var pending=new List<Task<SourceResult>>(tasks??new List<Task<SourceResult>>());
@@ -85,6 +79,7 @@ static class BuiltInOnlineSearch {
   var row=rows[0];
   if(row.Seeders!=42||row.Leechers!=7||row.Size!=1073741824L||row.Resolution!="1080p"||!row.Link.StartsWith("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",StringComparison.OrdinalIgnoreCase))
    throw new InvalidOperationException("Built-in metadata parser self-test failed.");
+  SearchRelevance.SelfTest();
   DeadlineSelfTest();
  }
 
