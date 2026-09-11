@@ -121,6 +121,9 @@ begin
   Memo.Font.Name := 'Segoe UI';
   Memo.Font.Size := 9;
   Memo.Font.Color := VSText;
+  Memo.BorderStyle := bsNone;
+  Memo.ScrollBars := ssNone;
+  Memo.WordWrap := True;
   SetWindowTheme(Memo.Handle, 'DarkMode_Explorer', '');
 end;
 
@@ -245,11 +248,13 @@ begin
   WizardForm.WelcomeLabel2.Height := ScaleY(150);
 
   WizardForm.FinishedHeadingLabel.Font.Name := 'Segoe UI Semibold';
-  WizardForm.FinishedHeadingLabel.Font.Size := 20;
+  WizardForm.FinishedHeadingLabel.Font.Size := 18;
   WizardForm.FinishedHeadingLabel.Font.Color := VSStrong;
   WizardForm.FinishedHeadingLabel.Left := ScaleX(194);
   WizardForm.FinishedHeadingLabel.Top := ScaleY(50);
   WizardForm.FinishedHeadingLabel.Width := WizardForm.FinishedPage.Width - ScaleX(222);
+  WizardForm.FinishedHeadingLabel.Height := ScaleY(40);
+  WizardForm.FinishedHeadingLabel.Caption := 'VideoShelf installed';
 
   WizardForm.FinishedLabel.Font.Name := 'Segoe UI';
   WizardForm.FinishedLabel.Font.Size := 10;
@@ -257,6 +262,7 @@ begin
   WizardForm.FinishedLabel.Left := ScaleX(194);
   WizardForm.FinishedLabel.Top := ScaleY(104);
   WizardForm.FinishedLabel.Width := WizardForm.FinishedPage.Width - ScaleX(222);
+  WizardForm.FinishedLabel.Height := ScaleY(120);
 
   WizardForm.SelectDirLabel.Font.Color := VSText;
   WizardForm.SelectDirBrowseLabel.Font.Color := VSMuted;
@@ -329,8 +335,35 @@ begin
   ThemeButton(WizardForm.CancelButton);
   WizardForm.DiskSpaceLabel.Font.Color := VSMuted;
 
+  { Inno Setup can restore the large wizard bitmap when switching to the
+    welcome/finished pages. Keep the default artwork suppressed so it never
+    appears behind VideoShelf's own branding. }
+  WizardForm.WizardBitmapImage.Visible := False;
+  WizardForm.WizardSmallBitmapImage.Visible := False;
+
   if CurPageID = wpReady then
+  begin
     WizardForm.ReadyMemo.Color := VSPanel;
+    WizardForm.ReadyMemo.BorderStyle := bsNone;
+    WizardForm.ReadyMemo.ScrollBars := ssNone;
+    WizardForm.ReadyMemo.WordWrap := True;
+  end;
+
+  if CurPageID = wpWelcome then
+  begin
+    WelcomeCard.BringToFront;
+    WizardForm.WelcomeLabel1.BringToFront;
+    WizardForm.WelcomeLabel2.BringToFront;
+  end;
+
+  if CurPageID = wpFinished then
+  begin
+    WizardForm.FinishedPage.Color := VSBackground;
+    FinishCard.BringToFront;
+    WizardForm.FinishedHeadingLabel.BringToFront;
+    WizardForm.FinishedLabel.BringToFront;
+    WizardForm.RunList.BringToFront;
+  end;
 end;
 
 function HasDotNet48(): Boolean;
