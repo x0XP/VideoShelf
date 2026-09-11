@@ -84,17 +84,17 @@ internal static class TransferSourceResolver
     {
         if (string.IsNullOrWhiteSpace(html)) return string.Empty;
 
-        Match magnet = Regex.Match(html, @"magnet:\?[^\s\"'<>]+", RegexOptions.IgnoreCase);
+        Match magnet = Regex.Match(html, "magnet:\\?[^\\s\\\"'<>]+", RegexOptions.IgnoreCase);
         if (magnet.Success)
         {
             string value = WebUtility.HtmlDecode(magnet.Value);
             if (MagnetLink.TryParse(value, out MagnetLink? parsed) && parsed != null) return value;
         }
 
-        Match infoHash = Regex.Match(html, @"info\s*hash.{0,400}?([a-f0-9]{40})", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        Match infoHash = Regex.Match(html, "info\\s*hash.{0,400}?([a-f0-9]{40})", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         if (infoHash.Success) return "magnet:?xt=urn:btih:" + infoHash.Groups[1].Value;
 
-        Match torrent = Regex.Match(html, @"href\s*=\s*[\"'](?<url>[^\"']+(?:\.torrent(?:\?[^\"']*)?))[\"']", RegexOptions.IgnoreCase);
+        Match torrent = Regex.Match(html, "href\\s*=\\s*[\\\"'](?<url>[^\\\"']+(?:\\.torrent(?:\\?[^\\\"']*)?))[\\\"']", RegexOptions.IgnoreCase);
         if (torrent.Success)
         {
             string href = WebUtility.HtmlDecode(torrent.Groups["url"].Value);
