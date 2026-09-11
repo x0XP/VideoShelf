@@ -13,7 +13,12 @@ if not exist "VideoShelf.ico" (
  exit /b 1
 )
 
-"%CSC%" /nologo /target:winexe /optimize+ /win32icon:"VideoShelf.ico" /out:"VideoShelf.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Xml.Linq.dll /reference:System.Security.dll "AppDataPaths.cs" "AppBrand.cs" "XdolfTheme.cs" "MockupControls.cs" "MockupActionButton.cs" "MockupFilter.cs" "FolderManagement.cs" "TransferBridge.cs" "VideoShelf.cs" "ScreenshotHarness.cs" "Shelf.Core.cs" "Shelf.Branding.cs" "Shelf.HomeDashboard.cs" "Shelf.Layout.cs" "Shelf.Visuals.cs" "Shelf.Polish.cs" "Shelf.Library.cs" "Shelf.Online.cs" "PortraitLookup.cs" "OnlineSearch.cs" "BuiltInOnlineSearch.cs" "SearchRelevance.cs" "OnlineThumbnailLookup.cs"
+if not exist "VideoShelfApp.ico" (
+ echo VideoShelf compiler icon asset is missing.
+ exit /b 1
+)
+
+"%CSC%" /nologo /target:winexe /optimize+ /win32icon:"VideoShelfApp.ico" /out:"VideoShelf.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Xml.Linq.dll /reference:System.Security.dll "AppDataPaths.cs" "AppBrand.cs" "XdolfTheme.cs" "MockupControls.cs" "MockupActionButton.cs" "MockupFilter.cs" "FolderManagement.cs" "TransferBridge.cs" "VideoShelf.cs" "ScreenshotHarness.cs" "Shelf.Core.cs" "Shelf.Branding.cs" "Shelf.HomeDashboard.cs" "Shelf.Layout.cs" "Shelf.Visuals.cs" "Shelf.Polish.cs" "Shelf.Library.cs" "Shelf.Online.cs" "PortraitLookup.cs" "OnlineSearch.cs" "BuiltInOnlineSearch.cs" "SearchRelevance.cs" "OnlineThumbnailLookup.cs"
 if errorlevel 1 (
  echo Build failed.
  exit /b 1
