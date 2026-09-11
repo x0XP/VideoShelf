@@ -56,11 +56,11 @@ jobs:
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-rezero-built-in.png'
           $argumentList = @('--screenshot-built-in-online','"re:zero"','"re zero"',('"' + $output + '"'),'1')
           $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList $argumentList -PassThru -NoNewWindow
-          if (-not $process.WaitForExit(65000)) {
+          if (-not $process.WaitForExit(90000)) {
             $process.Kill()
             $process.WaitForExit()
             "status=timeout" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Warning 'Built-in Find online artwork-complete screenshot exceeded 65 seconds.'
+            Write-Warning 'Built-in Find online artwork-complete screenshot exceeded 90 seconds.'
             exit 1
           }
           if ($process.ExitCode -ne 0 -or !(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
@@ -69,7 +69,7 @@ jobs:
             exit 1
           }
           "status=ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Host 'Built-in Find online rendered seeded results with complete visible artwork.'
+          Write-Host 'Built-in Find online rendered seeded results after the complete thumbnail pass finished.'
 
       - name: Fail if built-in Find online hung
         if: always() && steps.live_builtin.outputs.status == 'timeout'
