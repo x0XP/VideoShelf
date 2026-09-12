@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace VideoShelf.TransferHost;
 
 internal sealed class FullscreenPlayerController : IDisposable
@@ -75,9 +73,7 @@ internal sealed class FullscreenPlayerController : IDisposable
     void OnPlayPauseClick(object? sender, EventArgs e)
     {
         if (!sourcePlayPause.Enabled) return;
-        MethodInfo? onClick = sourcePlayPause.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (onClick == null) throw new InvalidOperationException("Streaming player play/pause action could not be invoked.");
-        onClick.Invoke(sourcePlayPause, new object[] { EventArgs.Empty });
+        sourcePlayPause.PerformClick();
         UpdatePlayPauseIcon();
     }
 
@@ -116,6 +112,14 @@ internal sealed class FullscreenPlayerController : IDisposable
             root.DoubleClick += OnVideoDoubleClick;
         foreach (Control child in root.Controls)
             HookDoubleClick(child);
+    }
+
+    void UnhookDoubleClick(Control root)
+    {
+        if (root != bottomBar && root != topBar)
+            root.DoubleClick -= OnVideoDoubleClick;
+        foreach (Control child in root.Controls)
+            UnhookDoubleClick(child);
     }
 
     void OnVideoDoubleClick(object? sender, EventArgs e)
@@ -208,6 +212,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         fullScreen.Click -= OnFullScreenClick;
         sourcePlayPause.TextChanged -= OnSourcePlayPauseChanged;
         sourcePlayPause.EnabledChanged -= OnSourcePlayPauseChanged;
+        UnhookDoubleClick(form);
         toolTip.Dispose();
         if (!playPause.IsDisposed) playPause.Dispose();
         if (!fullScreen.IsDisposed) fullScreen.Dispose();
