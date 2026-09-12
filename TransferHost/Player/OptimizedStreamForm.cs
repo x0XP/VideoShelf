@@ -308,10 +308,11 @@ internal sealed class OptimizedStreamForm : Form
     {
         TorrentManager? activeManager = manager;
         if (activeManager == null) return;
+        var streamProvider = activeManager.StreamProvider ?? throw new InvalidOperationException("Torrent streaming provider is unavailable.");
         long target = CalculatePrebufferBytes(file.Length), readTotal = 0;
         byte[] buffer = new byte[256 * 1024];
         videoOverlay.Visible = true; video.Visible = false;
-        using Stream warm = await activeManager.StreamProvider.CreateStreamAsync(file, false, cts.Token);
+        using Stream warm = await streamProvider.CreateStreamAsync(file, false, cts.Token);
         var clock = Stopwatch.StartNew();
         while (readTotal < target)
         {
@@ -342,6 +343,7 @@ internal sealed class OptimizedStreamForm : Form
                 var activePlayer = player;
                 var activeVlc = vlc;
                 if (request != playbackRevision || closing || activeManager == null || activeSession == null || activePlayer == null || activeVlc == null) return;
+                var streamProvider = activeManager.StreamProvider ?? throw new InvalidOperationException("Torrent streaming provider is unavailable.");
                 selected = file; playPause.Enabled = false; seek.Enabled = false;
                 try { activePlayer.Stop(); } catch { }
                 currentMedia?.Dispose(); currentMedia = null; await DisposeHttpStreamAsync();
@@ -350,7 +352,7 @@ internal sealed class OptimizedStreamForm : Form
                 await PrebufferAsync(file, request);
                 if (request != playbackRevision || closing) return;
                 status.Text = "Opening buffered stream…";
-                var httpStream = await activeManager.StreamProvider.CreateHttpStreamAsync(file, true, cts.Token);
+                var httpStream = await streamProvider.CreateHttpStreamAsync(file, true, cts.Token);
                 if (request != playbackRevision || closing) { await DisposeObjectAsync(httpStream); return; }
                 currentHttpStream = httpStream;
                 currentMedia = new Media(activeVlc, new Uri(activeSession.StreamingUrl(httpStream.RelativeUri)));
