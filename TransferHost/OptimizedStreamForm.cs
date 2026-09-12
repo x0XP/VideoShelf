@@ -140,6 +140,8 @@ internal sealed class OptimizedStreamForm : Form
 {
     static readonly HashSet<string> Playable = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".vob" };
     readonly string source;
+    readonly string releaseTitle;
+    readonly bool fixtureMode;
     readonly Panel videoHost = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
     readonly VideoView video = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
     readonly Label videoOverlay = Theme.Label("Preparing stream…", true);
@@ -162,22 +164,35 @@ internal sealed class OptimizedStreamForm : Form
     int playbackRevision;
     bool closing;
 
-    public OptimizedStreamForm(string source, string title)
+    public OptimizedStreamForm(string source, string title) : this(source, title, false) { }
+
+    internal OptimizedStreamForm(string source, string title, bool fixtureMode)
     {
         this.source = source;
+        releaseTitle = string.IsNullOrWhiteSpace(title) ? "Torrent" : title;
+        this.fixtureMode = fixtureMode;
         cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "StreamingCache", Guid.NewGuid().ToString("N"));
         Theme.Form(this, "Stream locally", new Size(1060, 720)); MinimumSize = new Size(800, 560);
         var top = new Panel { Dock = DockStyle.Top, Height = 96, BackColor = Theme.Background };
         var accentTop = new Panel { Dock = DockStyle.Top, Height = 2, BackColor = Theme.Blue };
         var accentLeft = new Panel { Dock = DockStyle.Left, Width = 3, BackColor = Theme.Red };
-        var heading = Theme.Label(title, true); heading.SetBounds(22, 14, 900, 27); heading.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; heading.AutoEllipsis = true;
+        var heading = Theme.Label(releaseTitle, true); heading.SetBounds(22, 14, 900, 27); heading.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; heading.AutoEllipsis = true;
         var fileLabel = Theme.Label("Video"); fileLabel.SetBounds(22, 54, 42, 26);
         fileChoice.SetBounds(70, 52, 430, 31); fileChoice.Enabled = false;
         status.SetBounds(520, 54, 500, 25); status.Anchor = AnchorStyles.Top | AnchorStyles.Left; status.AutoEllipsis = true;
         top.Controls.AddRange(new Control[] { accentTop, accentLeft, heading, fileLabel, fileChoice, status });
 
         videoOverlay.Dock = DockStyle.Fill; videoOverlay.TextAlign = ContentAlignment.MiddleCenter; videoOverlay.BackColor = Color.Black; videoOverlay.ForeColor = Theme.Muted; videoOverlay.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
-        video.Visible = false; videoHost.Controls.Add(video); videoHost.Controls.Add(videoOverlay); videoOverlay.BringToFront();
+        if (fixtureMode)
+        {
+            videoHost.Controls.Add(new Panel { Dock = DockStyle.Fill, BackColor = Color.Black });
+        }
+        else
+        {
+            video.Visible = false;
+            videoHost.Controls.Add(video);
+        }
+        videoHost.Controls.Add(videoOverlay); videoOverlay.BringToFront();
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 68, BackColor = Theme.Background };
         playPause.SetBounds(22, 16, 90, 34); playPause.Enabled = false;
@@ -187,15 +202,51 @@ internal sealed class OptimizedStreamForm : Form
         bottom.Controls.AddRange(new Control[] { playPause, stop, seek, timeLabel });
         Controls.Add(videoHost); Controls.Add(bottom); Controls.Add(top);
 
-        Shown += async (_, _) => await StartAsync();
-        FormClosing += OnClosing;
-        fileChoice.SelectedIndexChanged += async (_, _) => { if (fileChoice.SelectedIndex >= 0 && fileChoice.SelectedIndex < playable.Count && playable[fileChoice.SelectedIndex] != selected) await PlayFileAsync(playable[fileChoice.SelectedIndex]); };
+        if (fixtureMode)
+        {
+            ConfigureFixture();
+            FormClosed += (_, _) =>
+            {
+                uiTimer.Dispose();
+                cts.Dispose();
+                playbackGate.Dispose();
+            };
+        }
+        else
+        {
+            Shown += async (_, _) => await StartAsync();
+            FormClosing += OnClosing;
+            fileChoice.SelectedIndexChanged += async (_, _) =>
+            {
+                if (fileChoice.SelectedIndex >= 0 && fileChoice.SelectedIndex < playable.Count && playable[fileChoice.SelectedIndex] != selected)
+                    await PlayFileAsync(playable[fileChoice.SelectedIndex]);
+            };
+        }
         playPause.Click += (_, _) => TogglePlayback();
         stop.Click += (_, _) => Close();
         seek.ValueCommitted += (_, _) => CommitSeek();
         uiTimer.Tick += (_, _) => RefreshStats();
         Resize += (_, _) => LayoutPlayer();
         LayoutPlayer();
+    }
+
+    void ConfigureFixture()
+    {
+        fileChoice.Items.AddRange(new object[]
+        {
+            "Season 01/Example.S01E01.1080p.mkv  (1.4 GB)",
+            "Season 01/Example.S01E02.1080p.mkv  (1.3 GB)",
+            "Season 01/Example.S01E03.1080p.mkv  (1.5 GB)"
+        });
+        fileChoice.SelectedIndex = 0;
+        fileChoice.Enabled = true;
+        status.Text = "Ready • 4.8 MB/s • temporary stream cache";
+        videoOverlay.Text = "Optimized local stream preview";
+        playPause.Text = "Pause";
+        playPause.Enabled = true;
+        seek.Enabled = true;
+        seek.Value = 340;
+        timeLabel.Text = "8:12 / 24:06";
     }
 
     void LayoutPlayer()
@@ -217,7 +268,10 @@ internal sealed class OptimizedStreamForm : Form
             videoOverlay.Text = "Retrieving torrent metadata…";
             await manager.StartAsync();
             await manager.WaitForMetadataAsync(cts.Token);
-            playable = manager.Files.Where(f => Playable.Contains(Path.GetExtension(f.Path))).OrderByDescending(f => f.Length).ToList();
+            playable = manager.Files
+                .Where(f => Playable.Contains(Path.GetExtension(f.Path)))
+                .OrderBy(f => f.Path, TorrentVideoSelection.NaturalPathComparer)
+                .ToList();
             if (playable.Count == 0) throw new InvalidOperationException("This torrent does not contain a supported video file.");
             foreach (var file in manager.Files) await manager.SetFilePriorityAsync(file, Priority.DoNotDownload);
             fileChoice.BeginUpdate();
@@ -227,7 +281,9 @@ internal sealed class OptimizedStreamForm : Form
             Core.Initialize();
             vlc = new LibVLC("--no-video-title-show", "--network-caching=5000", "--file-caching=5000", "--clock-jitter=0", "--clock-synchro=0");
             player = new MediaPlayer(vlc); video.MediaPlayer = player; uiTimer.Start();
-            fileChoice.SelectedIndex = 0;
+
+            int target = TorrentVideoSelection.ChooseDefaultIndex(releaseTitle, playable.Select(f => f.Path).ToArray());
+            fileChoice.SelectedIndex = target >= 0 && target < playable.Count ? target : 0;
         }
         catch (OperationCanceledException) { if (!closing) Close(); }
         catch (Exception ex)
@@ -334,7 +390,7 @@ internal sealed class OptimizedStreamForm : Form
 
     async void OnClosing(object? sender, FormClosingEventArgs e)
     {
-        if (closing) return;
+        if (closing || fixtureMode) return;
         closing=true;e.Cancel=true;Interlocked.Increment(ref playbackRevision);cts.Cancel();uiTimer.Stop();
         try{await playbackGate.WaitAsync();}catch{}
         try
