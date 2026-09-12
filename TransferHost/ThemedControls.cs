@@ -273,18 +273,23 @@ internal sealed class DarkListView : ListView
         NativeTheme.Apply(this);
         DrawColumnHeader += (_, e) =>
         {
+            var header = e.Header;
+            if (header == null) return;
             using (var b = new SolidBrush(Color.FromArgb(12, 24, 34))) e.Graphics.FillRectangle(b, e.Bounds);
             using (var p = new Pen(Color.FromArgb(39, 58, 73))) e.Graphics.DrawLine(p, e.Bounds.Right - 1, e.Bounds.Top, e.Bounds.Right - 1, e.Bounds.Bottom);
-            TextRenderer.DrawText(e.Graphics, e.Header.Text, headerFont,
+            TextRenderer.DrawText(e.Graphics, header.Text, headerFont,
                 new Rectangle(e.Bounds.X + 9, e.Bounds.Y, Math.Max(1, e.Bounds.Width - 12), e.Bounds.Height),
                 Color.FromArgb(184, 202, 219), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         };
         DrawItem += (_, _) => { };
         DrawSubItem += (_, e) =>
         {
-            bool selected = e.Item.Selected;
+            var item = e.Item;
+            var subItem = e.SubItem;
+            if (item == null || subItem == null) return;
+            bool selected = item.Selected;
             using (var b = new SolidBrush(selected ? Color.FromArgb(24, 64, 105) : Theme.Panel)) e.Graphics.FillRectangle(b, e.Bounds);
-            TextRenderer.DrawText(e.Graphics, e.SubItem.Text, Font,
+            TextRenderer.DrawText(e.Graphics, subItem.Text, Font,
                 new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(1, e.Bounds.Width - 10), e.Bounds.Height),
                 selected ? Color.White : Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
