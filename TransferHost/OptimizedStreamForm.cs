@@ -232,12 +232,9 @@ internal sealed class OptimizedStreamForm : Form
 
     void ConfigureFixture()
     {
-        fileChoice.Items.AddRange(new object[]
-        {
-            "Season 01/Example.S01E01.1080p.mkv  (1.4 GB)",
-            "Season 01/Example.S01E02.1080p.mkv  (1.3 GB)",
-            "Season 01/Example.S01E03.1080p.mkv  (1.5 GB)"
-        });
+        fileChoice.Items.Add("Season 01/Example.S01E01.1080p.mkv  (1.4 GB)");
+        fileChoice.Items.Add("Season 01/Example.S01E02.1080p.mkv  (1.3 GB)");
+        fileChoice.Items.Add("Season 01/Example.S01E03.1080p.mkv  (1.5 GB)");
         fileChoice.SelectedIndex = 0;
         fileChoice.Enabled = true;
         status.Text = "Ready • 4.8 MB/s • temporary stream cache";
