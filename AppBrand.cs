@@ -31,6 +31,14 @@ static class AppBrand {
   return best;
  }
 
+ public static Icon IconForDpi(int dpi){
+  int safeDpi=Math.Max(96,dpi);
+  int requested=(int)Math.Round(32d*safeDpi/96d);
+  int native=NearestNativeSize(Math.Max(32,Math.Min(256,requested)));
+  try{if(File.Exists(IconPath))return new Icon(IconPath,new Size(native,native));}catch{}
+  try{return (Icon)Icon.Clone();}catch{return (Icon)SystemIcons.Application.Clone();}
+ }
+
  public static Bitmap Bitmap(int width,int height){
   int w=Math.Max(1,width),h=Math.Max(1,height);
   int requested=Math.Max(w,h);
