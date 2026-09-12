@@ -37,8 +37,8 @@ static class BuiltInOnlineSearch {
   if(normalized.Length==0)normalized=(query??"").Trim();
 
   var pending=Sources
-   .Select(source=>Task.Run(()=>SearchSource(source,normalized)))
-   .Concat(new[]{Task.Run(()=>SearchApiBay(normalized))})
+   .Select(source=>SearchSource(source,normalized,ct))
+   .Concat(new[]{SearchApiBay(normalized,ct)})
    .ToList();
   AggregateResult aggregate=await CollectWithinDeadline(pending,TimeSpan.FromSeconds(11),ct).ConfigureAwait(false);
 
@@ -66,7 +66,7 @@ static class BuiltInOnlineSearch {
    var finished=(Task<SourceResult>)completed;
    pending.Remove(finished);
    try{result.Responses.Add(await finished.ConfigureAwait(false));}
-   catch(OperationCanceledException){result.Responses.Add(new SourceResult{Failed=true});}
+   catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;result.Responses.Add(new SourceResult{Failed=true});}
    catch{result.Responses.Add(new SourceResult{Failed=true});}
   }
   return result;
@@ -96,9 +96,9 @@ static class BuiltInOnlineSearch {
    throw new InvalidOperationException("Built-in metadata deadline regression: partial results were not preserved when a source stalled.");
  }
 
- static async Task<SourceResult> SearchSource(string source,string query){
+ static async Task<SourceResult> SearchSource(string source,string query,CancellationToken ct){
   var response=new SourceResult();
-  using(var timeout=new CancellationTokenSource()){
+  using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct)){
    timeout.CancelAfter(TimeSpan.FromSeconds(10));
    try{
     var found=await TorznabSearch.Search(query,new OnlineSettings{Url=source,ApiKey="",AutoSearch=true},timeout.Token).ConfigureAwait(false);
@@ -109,15 +109,15 @@ static class BuiltInOnlineSearch {
       response.Results.Add(row);
      }
     }
-   }catch(OperationCanceledException){response.Failed=true;}
+   }catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;response.Failed=true;}
    catch{response.Failed=true;}
   }
   return response;
  }
 
- static async Task<SourceResult> SearchApiBay(string query){
+ static async Task<SourceResult> SearchApiBay(string query,CancellationToken ct){
   var response=new SourceResult();
-  using(var timeout=new CancellationTokenSource()){
+  using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct)){
    timeout.CancelAfter(TimeSpan.FromSeconds(10));
    try{
     string url="https://apibay.org/q.php?q="+Uri.EscapeDataString(query)+"&cat=200";
@@ -128,7 +128,7 @@ static class BuiltInOnlineSearch {
     }
     timeout.Token.ThrowIfCancellationRequested();
     response.Results=ParseApiBayPayload(payload,timeout.Token);
-   }catch(OperationCanceledException){response.Failed=true;}
+   }catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;response.Failed=true;}
    catch{response.Failed=true;}
   }
   return response;
