@@ -101,7 +101,7 @@ jobs:
           $package = Join-Path $env:RUNNER_TEMP 'VideoShelf-package'
           $transferDir = Join-Path $package 'TransferHost'
           New-Item -ItemType Directory -Force -Path $transferDir | Out-Null
-          dotnet publish '.\TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
+          dotnet publish '.\src\VideoShelf.TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
           if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
           Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
           Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')

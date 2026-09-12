@@ -35,11 +35,12 @@ if errorlevel 1 (
 
 if /I "%~1"=="--build-only" exit /b 0
 
+set "TRANSFER_SOURCE=%~dp0src\VideoShelf.TransferHost"
 set "TRANSFER_EXE=%~dp0TransferHostRuntime\VideoShelf.TransferHost.exe"
 set "BUILD_TRANSFER=0"
 if not exist "%TRANSFER_EXE%" set "BUILD_TRANSFER=1"
 if "%BUILD_TRANSFER%"=="0" (
- powershell -NoProfile -Command "$exe=(Get-Item -LiteralPath $env:TRANSFER_EXE).LastWriteTimeUtc; $stale=Get-ChildItem -LiteralPath '%~dp0TransferHost' -Recurse -File | Where-Object { $_.Extension -in '.cs','.csproj' -and $_.LastWriteTimeUtc -gt $exe }; if($stale){exit 1}else{exit 0}"
+ powershell -NoProfile -Command "$exe=(Get-Item -LiteralPath $env:TRANSFER_EXE).LastWriteTimeUtc; $stale=Get-ChildItem -LiteralPath $env:TRANSFER_SOURCE -Recurse -File | Where-Object { $_.Extension -in '.cs','.csproj' -and $_.LastWriteTimeUtc -gt $exe }; if($stale){exit 1}else{exit 0}"
  if errorlevel 1 set "BUILD_TRANSFER=1"
 )
 
@@ -47,7 +48,7 @@ if "%BUILD_TRANSFER%"=="1" (
  where dotnet >nul 2>nul
  if not errorlevel 1 (
   echo Building VideoShelf torrent transfer runtime...
-  dotnet publish "TransferHost\VideoShelf.TransferHost.csproj" -c Release -r win-x64 --self-contained true -o "TransferHostRuntime"
+  dotnet publish "src\VideoShelf.TransferHost\VideoShelf.TransferHost.csproj" -c Release -r win-x64 --self-contained true -o "TransferHostRuntime"
   if errorlevel 1 echo Warning: transfer runtime build failed. Library browsing will still work.
  ) else (
   echo Note: .NET SDK not found, so the transfer runtime was not built. Use the packaged Windows release for integrated downloads/streaming.

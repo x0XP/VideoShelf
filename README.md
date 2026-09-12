@@ -32,7 +32,7 @@ The packaged Windows artifact contains `VideoShelf.exe` plus a `TransferHost` fo
 
 When running directly from source, double-click `Start.cmd`. It compiles the main app using the .NET Framework C# compiler. If a .NET SDK is installed and the transfer runtime has not already been built, `Start.cmd` also publishes it to `TransferHostRuntime`.
 
-For development, `VideoShelf.csproj` targets .NET Framework 4.8. `TransferHost/VideoShelf.TransferHost.csproj` targets .NET 8 for the integrated torrent/download/player runtime.
+For development, `VideoShelf.csproj` targets .NET Framework 4.8. `src/VideoShelf.TransferHost/VideoShelf.TransferHost.csproj` targets .NET 8 for the integrated torrent/download/player runtime.
 
 ## Adding collections
 
@@ -72,7 +72,7 @@ Collection artwork and online-result thumbnails use DuckDuckGo Images only. Coll
 
 ## Source layout
 
-The repository is grouped by responsibility rather than keeping the main application source flat:
+The repository is grouped by responsibility rather than keeping the application source flat:
 
 - `src/VideoShelf/Application/` — main application entry point and shared application models.
 - `src/VideoShelf/Infrastructure/` — application-data paths, safe folder creation and display-name aliases.
@@ -83,11 +83,11 @@ The repository is grouped by responsibility rather than keeping the main applica
 - `src/VideoShelf/UI/Shelf/` — the partial `Shelf` window implementation, split by layout, library, online, branding and visual responsibilities.
 - `src/VideoShelf/UI/Theme/` — shared Xdolf-inspired palette and tooltip rendering.
 - `src/VideoShelf/Diagnostics/` — deterministic screenshot/test harness used by CI.
-- `TransferHost/Core/` — MonoTorrent source resolution, transfer runtime helpers and torrent-video selection.
-- `TransferHost/Player/` — embedded LibVLC player and fullscreen/player controls.
-- `TransferHost/UI/` — transfer/file-list UI and themed transfer controls.
-- `TransferHost/Diagnostics/` — transfer UI capture used by the runtime self-test.
-- `TransferHost/EntryPoint.cs`, `TransferHost/Program.cs` and `TransferHost/VideoShelf.TransferHost.csproj` — transfer-host startup and project definition.
+- `src/VideoShelf.TransferHost/Core/` — MonoTorrent source resolution, transfer runtime helpers and torrent-video selection.
+- `src/VideoShelf.TransferHost/Player/` — embedded LibVLC player and fullscreen/player controls.
+- `src/VideoShelf.TransferHost/UI/` — transfer/file-list UI and themed transfer controls.
+- `src/VideoShelf.TransferHost/Diagnostics/` — transfer UI capture used by the runtime self-test.
+- `src/VideoShelf.TransferHost/EntryPoint.cs`, `src/VideoShelf.TransferHost/Program.cs` and `src/VideoShelf.TransferHost/VideoShelf.TransferHost.csproj` — transfer-host startup and project definition.
 - `build/Branding/BuildBrandAssets.ps1` — deterministic brand/icon asset generation; outputs remain at the repository root for the application, transfer host and installer build.
 - `Start.cmd` — main compiler/launcher and optional local TransferHost publish.
 - `VideoShelf.csproj` — .NET Framework 4.8 main app project.
