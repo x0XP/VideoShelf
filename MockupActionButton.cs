@@ -5,8 +5,15 @@ using System.Windows.Forms;
 
 namespace VideoShelf {
 sealed class MockupActionButton : Control {
+ string subtitleText="";
  public string TitleText="";
- public string SubtitleText="";
+ public string SubtitleText{
+  get{return subtitleText;}
+  set{
+   subtitleText=string.Equals(value,"Play without downloading",StringComparison.OrdinalIgnoreCase)?"Streams via temporary cache":(value??"");
+   Invalidate();
+  }
+ }
  public string Glyph="";
  public Color Accent=XdolfTheme.AccentBlue;
  bool hot,pressed;
