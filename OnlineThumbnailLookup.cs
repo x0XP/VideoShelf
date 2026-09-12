@@ -30,7 +30,7 @@ static class OnlineThumbnailLookup {
   ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
   var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};
   var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(15)};
-  c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.3");
+  c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.7");
   return c;
  }
 
