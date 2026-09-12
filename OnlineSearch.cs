@@ -58,7 +58,7 @@ static class TorznabSearch {
   ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
   var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};
   var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(30)};
-  c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.6");
+  c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.7");
   return c;
  }
  static string Elem(XElement item,string local){
