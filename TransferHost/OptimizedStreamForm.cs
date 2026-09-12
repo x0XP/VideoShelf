@@ -259,25 +259,30 @@ internal sealed class OptimizedStreamForm : Form
         try
         {
             Directory.CreateDirectory(cache);
-            session = new StreamingTorrentSession(Path.Combine(cache, "metadata"));
-            manager = await session.AddAsync(source, cache, cts.Token);
+            var streamSession = new StreamingTorrentSession(Path.Combine(cache, "metadata"));
+            session = streamSession;
+            var torrentManager = await streamSession.AddAsync(source, cache, cts.Token);
+            manager = torrentManager;
             status.Text = "Connecting • retrieving metadata";
             videoOverlay.Text = "Retrieving torrent metadata…";
-            await manager.StartAsync();
-            await manager.WaitForMetadataAsync(cts.Token);
-            playable = manager.Files
+            await torrentManager.StartAsync();
+            await torrentManager.WaitForMetadataAsync(cts.Token);
+            playable = torrentManager.Files
                 .Where(f => Playable.Contains(Path.GetExtension(f.Path)))
                 .OrderBy(f => f.Path, TorrentVideoSelection.NaturalPathComparer)
                 .ToList();
             if (playable.Count == 0) throw new InvalidOperationException("This torrent does not contain a supported video file.");
-            foreach (var file in manager.Files) await manager.SetFilePriorityAsync(file, Priority.DoNotDownload);
+            foreach (var file in torrentManager.Files) await torrentManager.SetFilePriorityAsync(file, Priority.DoNotDownload);
             fileChoice.BeginUpdate();
             foreach (var file in playable) fileChoice.Items.Add($"{file.Path}  ({FormatSize(file.Length)})");
             fileChoice.EndUpdate(); fileChoice.Enabled = true;
 
             Core.Initialize();
-            vlc = new LibVLC("--no-video-title-show", "--network-caching=5000", "--file-caching=5000", "--clock-jitter=0", "--clock-synchro=0");
-            player = new MediaPlayer(vlc); video.MediaPlayer = player; uiTimer.Start();
+            var localVlc = new LibVLC("--no-video-title-show", "--network-caching=5000", "--file-caching=5000", "--clock-jitter=0", "--clock-synchro=0");
+            vlc = localVlc;
+            var mediaPlayer = new MediaPlayer(localVlc);
+            player = mediaPlayer;
+            video.MediaPlayer = mediaPlayer; uiTimer.Start();
 
             int target = TorrentVideoSelection.ChooseDefaultIndex(releaseTitle, playable.Select(f => f.Path).ToArray());
             fileChoice.SelectedIndex = target >= 0 && target < playable.Count ? target : 0;
@@ -301,11 +306,12 @@ internal sealed class OptimizedStreamForm : Form
 
     async Task PrebufferAsync(ITorrentManagerFile file, int request)
     {
-        if (manager == null) return;
+        TorrentManager? activeManager = manager;
+        if (activeManager == null) return;
         long target = CalculatePrebufferBytes(file.Length), readTotal = 0;
         byte[] buffer = new byte[256 * 1024];
         videoOverlay.Visible = true; video.Visible = false;
-        using Stream warm = await manager.StreamProvider.CreateStreamAsync(file, false, cts.Token);
+        using Stream warm = await activeManager.StreamProvider.CreateStreamAsync(file, false, cts.Token);
         var clock = Stopwatch.StartNew();
         while (readTotal < target)
         {
@@ -316,7 +322,7 @@ internal sealed class OptimizedStreamForm : Form
             readTotal += read;
             double mb = readTotal / (1024d * 1024d), totalMb = target / (1024d * 1024d);
             double measured = clock.Elapsed.TotalSeconds > 0.5 ? mb / clock.Elapsed.TotalSeconds : 0;
-            double swarm = manager.Monitor.DownloadRate / (1024d * 1024d);
+            double swarm = activeManager.Monitor.DownloadRate / (1024d * 1024d);
             double rate = Math.Max(measured, swarm);
             status.Text = $"Buffering {mb:0.0}/{totalMb:0.0} MB • {rate:0.0} MB/s";
             videoOverlay.Text = $"Buffering selected video…\n\n{mb:0.0} / {totalMb:0.0} MB";
@@ -331,20 +337,24 @@ internal sealed class OptimizedStreamForm : Form
             await playbackGate.WaitAsync(cts.Token);
             try
             {
-                if (request != playbackRevision || closing || manager == null || session == null || player == null || vlc == null) return;
+                var activeManager = manager;
+                var activeSession = session;
+                var activePlayer = player;
+                var activeVlc = vlc;
+                if (request != playbackRevision || closing || activeManager == null || activeSession == null || activePlayer == null || activeVlc == null) return;
                 selected = file; playPause.Enabled = false; seek.Enabled = false;
-                try { player.Stop(); } catch { }
+                try { activePlayer.Stop(); } catch { }
                 currentMedia?.Dispose(); currentMedia = null; await DisposeHttpStreamAsync();
-                foreach (var item in manager.Files) await manager.SetFilePriorityAsync(item, item == file ? Priority.High : Priority.DoNotDownload);
+                foreach (var item in activeManager.Files) await activeManager.SetFilePriorityAsync(item, item == file ? Priority.High : Priority.DoNotDownload);
 
                 await PrebufferAsync(file, request);
                 if (request != playbackRevision || closing) return;
                 status.Text = "Opening buffered stream…";
-                var httpStream = await manager.StreamProvider.CreateHttpStreamAsync(file, true, cts.Token);
+                var httpStream = await activeManager.StreamProvider.CreateHttpStreamAsync(file, true, cts.Token);
                 if (request != playbackRevision || closing) { await DisposeObjectAsync(httpStream); return; }
                 currentHttpStream = httpStream;
-                currentMedia = new Media(vlc, new Uri(session.StreamingUrl(httpStream.RelativeUri)));
-                bool started = player.Play(currentMedia);
+                currentMedia = new Media(activeVlc, new Uri(activeSession.StreamingUrl(httpStream.RelativeUri)));
+                bool started = activePlayer.Play(currentMedia);
                 if (!started) throw new InvalidOperationException("LibVLC could not start playback for the selected torrent file.");
                 playPause.Text = "Pause"; playPause.Enabled = true; seek.Enabled = true; video.Visible = true; videoOverlay.Visible = false;
             }
