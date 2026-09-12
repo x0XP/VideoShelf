@@ -72,27 +72,26 @@ Collection artwork and online-result thumbnails use DuckDuckGo Images only. Coll
 
 ## Source layout
 
-- `VideoShelf.cs` — entry point, shared models, and collection artwork card control
-- `Shelf.Core.cs` — main window construction and shared UI helpers
-- `Shelf.Layout.cs` — responsive mock-up shell, Search/Inspector positioning and navigation layout
-- `Shelf.Visuals.cs` — owner-drawn inputs and local-video ListView styling
-- `Shelf.Polish.cs` — dark filter, inspector, Home-sort and scrollbar polish
-- `Shelf.Library.cs` — local library scanning, collection artwork, navigation, and folder creation
-- `Shelf.Online.cs` — metadata result rendering, language/source/category/resolution filtering and View files / Download / Stream actions
-- `MockupControls.cs` — Xdolf-inspired navigation, online-result controls and release-language classification
-- `MockupFilter.cs` — dark filters, inspector metadata and scrollbar helpers
-- `MockupActionButton.cs` — large Download/Stream action controls
-- `TransferBridge.cs` — launches the bundled VideoShelf transfer runtime from the lightweight WinForms shell
-- `TransferHost/` — .NET 8 MonoTorrent + LibVLC download, metadata-inspection and embedded streaming runtime
-- `FolderManagement.cs` — safe folder creation, display-name aliases, and the `re:zero` self-test
-- Collection artwork lookup and caching are handled by the library artwork subsystem.
-- `OnlineSearch.cs` — metadata-source search/settings
-- `OnlineThumbnailLookup.cs` — search-engine result thumbnails
-- `XdolfTheme.cs` — shared Xdolf-inspired palette, controls and tooltip rendering
-- `ScreenshotHarness.cs` — deterministic compiled-UI captures plus optional real artwork/live metadata proofs
-- `AppDataPaths.cs` — VideoShelf data paths and legacy-data migration
-- `Start.cmd` — main compiler/launcher and optional local TransferHost publish
-- `VideoShelf.csproj` — .NET Framework 4.8 main app project
+The repository is grouped by responsibility rather than keeping the main application source flat:
+
+- `src/VideoShelf/Application/` — main application entry point and shared application models.
+- `src/VideoShelf/Infrastructure/` — application-data paths, safe folder creation and display-name aliases.
+- `src/VideoShelf/Branding/` — runtime brand/icon loading.
+- `src/VideoShelf/Search/` — metadata search, search relevance, portrait lookup and online thumbnail lookup.
+- `src/VideoShelf/Media/` — bridge between the lightweight shell and the bundled transfer runtime.
+- `src/VideoShelf/UI/Controls/` — reusable Xdolf-inspired controls and filter/inspector helpers.
+- `src/VideoShelf/UI/Shelf/` — the partial `Shelf` window implementation, split by layout, library, online, branding and visual responsibilities.
+- `src/VideoShelf/UI/Theme/` — shared Xdolf-inspired palette and tooltip rendering.
+- `src/VideoShelf/Diagnostics/` — deterministic screenshot/test harness used by CI.
+- `TransferHost/Core/` — MonoTorrent source resolution, transfer runtime helpers and torrent-video selection.
+- `TransferHost/Player/` — embedded LibVLC player and fullscreen/player controls.
+- `TransferHost/UI/` — transfer/file-list UI and themed transfer controls.
+- `TransferHost/Diagnostics/` — transfer UI capture used by the runtime self-test.
+- `TransferHost/EntryPoint.cs`, `TransferHost/Program.cs` and `TransferHost/VideoShelf.TransferHost.csproj` — transfer-host startup and project definition.
+- `BuildBrandAssets.ps1` — brand asset generation kept at repository root because both the classic project and launcher invoke it directly.
+- `Start.cmd` — main compiler/launcher and optional local TransferHost publish.
+- `VideoShelf.csproj` — .NET Framework 4.8 main app project.
+- `installer/` — Inno Setup installer definition.
 
 ## Build validation
 

@@ -28,29 +28,29 @@
     <Reference Include="System.Xml.Linq" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AppDataPaths.cs" />
-    <Compile Include="AppBrand.cs" />
-    <Compile Include="XdolfTheme.cs" />
-    <Compile Include="MockupControls.cs" />
-    <Compile Include="MockupActionButton.cs" />
-    <Compile Include="MockupFilter.cs" />
-    <Compile Include="FolderManagement.cs" />
-    <Compile Include="TransferBridge.cs" />
-    <Compile Include="VideoShelf.cs" />
-    <Compile Include="ScreenshotHarness.cs" />
-    <Compile Include="Shelf.Core.cs" />
-    <Compile Include="Shelf.Branding.cs" />
-    <Compile Include="Shelf.HomeDashboard.cs" />
-    <Compile Include="Shelf.Layout.cs" />
-    <Compile Include="Shelf.Visuals.cs" />
-    <Compile Include="Shelf.Polish.cs" />
-    <Compile Include="Shelf.Library.cs" />
-    <Compile Include="Shelf.Online.cs" />
-    <Compile Include="PortraitLookup.cs" />
-    <Compile Include="OnlineSearch.cs" />
-    <Compile Include="BuiltInOnlineSearch.cs" />
-    <Compile Include="SearchRelevance.cs" />
-    <Compile Include="OnlineThumbnailLookup.cs" />
+    <Compile Include="src\VideoShelf\Infrastructure\AppDataPaths.cs" />
+    <Compile Include="src\VideoShelf\Branding\AppBrand.cs" />
+    <Compile Include="src\VideoShelf\UI\Theme\XdolfTheme.cs" />
+    <Compile Include="src\VideoShelf\UI\Controls\MockupControls.cs" />
+    <Compile Include="src\VideoShelf\UI\Controls\MockupActionButton.cs" />
+    <Compile Include="src\VideoShelf\UI\Controls\MockupFilter.cs" />
+    <Compile Include="src\VideoShelf\Infrastructure\FolderManagement.cs" />
+    <Compile Include="src\VideoShelf\Media\TransferBridge.cs" />
+    <Compile Include="src\VideoShelf\Application\VideoShelf.cs" />
+    <Compile Include="src\VideoShelf\Diagnostics\ScreenshotHarness.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Core.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Branding.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.HomeDashboard.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Layout.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Visuals.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Polish.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Library.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Online.cs" />
+    <Compile Include="src\VideoShelf\Search\PortraitLookup.cs" />
+    <Compile Include="src\VideoShelf\Search\OnlineSearch.cs" />
+    <Compile Include="src\VideoShelf\Search\BuiltInOnlineSearch.cs" />
+    <Compile Include="src\VideoShelf\Search\SearchRelevance.cs" />
+    <Compile Include="src\VideoShelf\Search\OnlineThumbnailLookup.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="BuildBrandAssets.ps1" />
