@@ -1,4 +1,3 @@
-using System.Reflection;
 using MonoTorrent.Client;
 
 namespace VideoShelf.TransferHost;
@@ -76,24 +75,14 @@ internal sealed class FileListForm : Form
         try
         {
             Directory.CreateDirectory(cache);
-            session = new TorrentSession(Path.Combine(cache, "metadata"), false);
-            TorrentManager manager = await session.AddAsync(source, cache, false, cts.Token);
+            var metadataSession = new TorrentSession(Path.Combine(cache, "metadata"));
+            session = metadataSession;
+            TorrentManager manager = await metadataSession.AddAsync(source, cache, cts.Token);
 
             if (!manager.HasMetadata)
             {
                 state.Text = "Connecting for torrent metadata only…";
-                MethodInfo? metadataStart = typeof(TorrentManager)
-                    .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-                    .FirstOrDefault(m => m.Name == "StartAsync" &&
-                                         m.GetParameters().Length == 1 &&
-                                         m.GetParameters()[0].ParameterType == typeof(bool));
-                if (metadataStart == null)
-                    throw new InvalidOperationException("The bundled torrent engine does not expose metadata-only startup.");
-
-                object? invoked = metadataStart.Invoke(manager, new object[] { true });
-                if (invoked is Task startTask) await startTask;
-                else throw new InvalidOperationException("Could not start the metadata-only torrent session.");
-
+                await TorrentSession.StartMetadataOnlyAsync(manager);
                 await manager.WaitForMetadataAsync(cts.Token);
             }
 
@@ -115,11 +104,6 @@ internal sealed class FileListForm : Form
         catch (OperationCanceledException)
         {
             state.Text = "Metadata lookup cancelled.";
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException != null)
-        {
-            state.Text = ex.InnerException.Message;
-            MessageBox.Show(this, ex.InnerException.Message, "VideoShelf torrent files", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch (Exception ex)
         {
