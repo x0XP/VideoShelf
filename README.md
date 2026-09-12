@@ -88,7 +88,7 @@ The repository is grouped by responsibility rather than keeping the main applica
 - `TransferHost/UI/` — transfer/file-list UI and themed transfer controls.
 - `TransferHost/Diagnostics/` — transfer UI capture used by the runtime self-test.
 - `TransferHost/EntryPoint.cs`, `TransferHost/Program.cs` and `TransferHost/VideoShelf.TransferHost.csproj` — transfer-host startup and project definition.
-- `BuildBrandAssets.ps1` — brand asset generation kept at repository root because both the classic project and launcher invoke it directly.
+- `build/Branding/BuildBrandAssets.ps1` — deterministic brand/icon asset generation; outputs remain at the repository root for the application, transfer host and installer build.
 - `Start.cmd` — main compiler/launcher and optional local TransferHost publish.
 - `VideoShelf.csproj` — .NET Framework 4.8 main app project.
 - `installer/` — Inno Setup installer definition.

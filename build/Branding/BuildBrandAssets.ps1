@@ -1,6 +1,10 @@
 param(
-  [string]$OutputDir = $PSScriptRoot
+  [string]$OutputDir
 )
+
+if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+  $OutputDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

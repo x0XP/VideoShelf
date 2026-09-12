@@ -10,7 +10,7 @@
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <ApplicationIcon>VideoShelfApp.ico</ApplicationIcon>
-    <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)BuildBrandAssets.ps1&quot;</PreBuildEvent>
+    <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)build\Branding\BuildBrandAssets.ps1&quot;</PreBuildEvent>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <Optimize>true</Optimize>
@@ -53,7 +53,7 @@
     <Compile Include="src\VideoShelf\Search\OnlineThumbnailLookup.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="BuildBrandAssets.ps1" />
+    <None Include="build\Branding\BuildBrandAssets.ps1" />
     <Content Include="VideoShelf.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
