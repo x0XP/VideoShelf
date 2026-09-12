@@ -9,7 +9,7 @@ using System.Windows.Forms;
 namespace VideoShelf {
 static class Program {
  [STAThread] static void Main(string[] args) {
-  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{FolderNaming.SelfTest();BuiltInOnlineSearch.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
+  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{FolderNaming.SelfTest();BuiltInOnlineSearch.SelfTest();TransferBridge.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int builtInArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--test-built-in-online",StringComparison.OrdinalIgnoreCase));
   if(builtInArg>=0){try{string query=(builtInArg+1<args.Length&&args[builtInArg+1].Length>0)?args[builtInArg+1]:"re zero";using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(18))){var found=BuiltInOnlineSearch.Search(query,timeout.Token).GetAwaiter().GetResult();if(found.Count==0)throw new InvalidOperationException("Built-in online search returned no seeded results for "+query+".");if(found.Any(r=>r.Seeders<=0||string.IsNullOrWhiteSpace(r.Link)))throw new InvalidOperationException("Built-in online search returned an invalid or zero-seeder result.");Console.WriteLine("Built-in online search returned "+found.Count+" seeded result(s). Sources: "+string.Join(", ",found.Select(r=>r.Source).Distinct(StringComparer.OrdinalIgnoreCase).Take(8)));}Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int builtInShotArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-built-in-online",StringComparison.OrdinalIgnoreCase));
