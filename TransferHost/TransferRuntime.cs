@@ -11,6 +11,7 @@ internal static class TransferRuntime
         StreamingTorrentSession.SelfTest();
         TransferSourceResolver.SelfTest();
         TorrentVideoSelection.SelfTest();
+        TorrentVideoSelectionUiController.SelfTest();
         MethodInfo? metadataStart = typeof(TorrentManager)
             .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
             .FirstOrDefault(m => m.Name == "StartAsync" &&
