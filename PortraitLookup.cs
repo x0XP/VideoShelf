@@ -24,7 +24,7 @@ static class PortraitLookup {
  static readonly HttpClient http=CreateClient();
  static readonly SemaphoreSlim gate=new SemaphoreSlim(1,1);
  static readonly string cache=AppDataPaths.MigrateDirectory("Portraits");
- static HttpClient CreateClient(){ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(15)};c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.4");return c;}
+ static HttpClient CreateClient(){ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(15)};c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.7");return c;}
  static string Key(string name){using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(name.Trim().ToLowerInvariant()))).Replace("-","");}
  static string FileFor(string name){return Path.Combine(cache,Key(name)+".jpg");}
  static string PrimaryQuery(string name){return (name??"").Trim();}
