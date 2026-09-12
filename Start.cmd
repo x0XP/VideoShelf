@@ -34,7 +34,16 @@ if errorlevel 1 (
 )
 
 if /I "%~1"=="--build-only" exit /b 0
-if not exist "TransferHostRuntime\VideoShelf.TransferHost.exe" (
+
+set "TRANSFER_EXE=%~dp0TransferHostRuntime\VideoShelf.TransferHost.exe"
+set "BUILD_TRANSFER=0"
+if not exist "%TRANSFER_EXE%" set "BUILD_TRANSFER=1"
+if "%BUILD_TRANSFER%"=="0" (
+ powershell -NoProfile -Command "$exe=(Get-Item -LiteralPath $env:TRANSFER_EXE).LastWriteTimeUtc; $stale=Get-ChildItem -LiteralPath '%~dp0TransferHost' -Recurse -File | Where-Object { $_.Extension -in '.cs','.csproj' -and $_.LastWriteTimeUtc -gt $exe }; if($stale){exit 1}else{exit 0}"
+ if errorlevel 1 set "BUILD_TRANSFER=1"
+)
+
+if "%BUILD_TRANSFER%"=="1" (
  where dotnet >nul 2>nul
  if not errorlevel 1 (
   echo Building VideoShelf torrent transfer runtime...
