@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace VideoShelf.TransferHost;
 
 internal static class EntryPoint
@@ -46,16 +44,7 @@ internal static class EntryPoint
             }
         }
 
-        MethodInfo? original = typeof(Program).GetMethod("Main", BindingFlags.Static | BindingFlags.NonPublic);
-        if (original == null) throw new MissingMethodException("VideoShelf transfer runtime entry point was not found.");
-        try
-        {
-            original.Invoke(null, new object[] { args });
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException != null)
-        {
-            throw ex.InnerException;
-        }
+        Program.Run(args);
     }
 
     static string[] ReplaceSource(string[] args, string source)
