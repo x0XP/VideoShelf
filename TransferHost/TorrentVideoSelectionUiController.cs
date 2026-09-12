@@ -59,25 +59,30 @@ internal sealed class TorrentVideoSelectionUiController : IDisposable
             .Select(item => ExtractPath(item?.ToString()))
             .ToArray();
 
-        string[] naturalPaths = paths
-            .OrderBy(path => path, TorrentVideoSelection.NaturalPathComparer)
-            .ToArray();
-
-        int naturalIndex = TorrentVideoSelection.ChooseDefaultIndex(releaseTitle, naturalPaths);
-        if (naturalIndex < 0 || naturalIndex >= naturalPaths.Length)
-        {
-            applied = true;
-            return;
-        }
-
-        string chosenPath = naturalPaths[naturalIndex];
-        int selectorIndex = Array.FindIndex(paths,
-            path => string.Equals(path, chosenPath, StringComparison.OrdinalIgnoreCase));
-
+        int selectorIndex = ChooseSelectorIndex(releaseTitle, paths);
         if (selectorIndex >= 0 && fileChoice.SelectedIndex != selectorIndex)
             fileChoice.SelectedIndex = selectorIndex;
 
         applied = true;
+    }
+
+    internal static int ChooseSelectorIndex(string releaseTitle, IReadOnlyList<string> selectorPaths)
+    {
+        if (selectorPaths == null || selectorPaths.Count == 0) return -1;
+
+        string[] naturalPaths = selectorPaths
+            .OrderBy(path => path, TorrentVideoSelection.NaturalPathComparer)
+            .ToArray();
+
+        int naturalIndex = TorrentVideoSelection.ChooseDefaultIndex(releaseTitle ?? string.Empty, naturalPaths);
+        if (naturalIndex < 0 || naturalIndex >= naturalPaths.Length) return -1;
+
+        string chosenPath = naturalPaths[naturalIndex];
+        for (int i = 0; i < selectorPaths.Count; i++)
+            if (string.Equals(selectorPaths[i], chosenPath, StringComparison.OrdinalIgnoreCase))
+                return i;
+
+        return -1;
     }
 
     internal static string ExtractPath(string? selectorText)
@@ -85,6 +90,23 @@ internal sealed class TorrentVideoSelectionUiController : IDisposable
         string value = selectorText ?? string.Empty;
         int suffix = value.LastIndexOf("  (", StringComparison.Ordinal);
         return suffix > 0 ? value[..suffix] : value;
+    }
+
+    public static void SelfTest()
+    {
+        string[] selectorOrder =
+        {
+            "Season 01/Show.S01E10.mkv",
+            "Season 01/Show.S01E02.mkv",
+            "Season 01/Show.S01E01.mkv"
+        };
+        int selected = ChooseSelectorIndex("Show Season 1 Complete 1080p", selectorOrder);
+        if (selected != 2)
+            throw new InvalidOperationException("Event-driven torrent video selector did not map the natural default back to the real selector index.");
+
+        string rendered = "Season 01/Show.S01E02.mkv  (1.4 GB)";
+        if (!ExtractPath(rendered).Equals("Season 01/Show.S01E02.mkv", StringComparison.Ordinal))
+            throw new InvalidOperationException("Torrent video selector path extraction regressed.");
     }
 
     static T? FindControl<T>(Control root) where T : Control
