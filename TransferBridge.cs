@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using System.Windows.Forms;
 
 namespace VideoShelf {
@@ -11,16 +12,37 @@ sealed class TransferActivity {
 }
 static class TransferBridge {
  static readonly object gate=new object();static readonly List<TransferActivity> active=new List<TransferActivity>();static int nextId;
- public static int ActiveDownloads {get{lock(gate)return active.Count(a=>a.Mode=="download"&&a.Process!=null&&!a.Process.HasExited);}}
- public static int ActiveStreams {get{lock(gate)return active.Count(a=>a.Mode=="stream"&&a.Process!=null&&!a.Process.HasExited);}}
+ public static int ActiveDownloads {get{lock(gate){Prune();return active.Count(a=>a.Mode=="download");}}}
+ public static int ActiveStreams {get{lock(gate){Prune();return active.Count(a=>a.Mode=="stream");}}}
  public static List<TransferActivity> Snapshot(string mode){lock(gate){Prune();return active.Where(a=>a.Mode.Equals(mode,StringComparison.OrdinalIgnoreCase)).OrderByDescending(a=>a.Started).Select(a=>new TransferActivity{Id=a.Id,Mode=a.Mode,Title=a.Title,Destination=a.Destination,Started=a.Started,Process=a.Process}).ToList();}}
- static void Prune(){active.RemoveAll(a=>a.Process==null||a.Process.HasExited);}
+ static void Prune(){
+  for(int i=active.Count-1;i>=0;i--){
+   var process=active[i].Process;bool finished=process==null;
+   if(!finished){try{finished=process.HasExited;}catch{finished=true;}}
+   if(!finished)continue;
+   active.RemoveAt(i);try{if(process!=null)process.Dispose();}catch{}
+  }
+ }
  static string FindHost(){string baseDir=AppDomain.CurrentDomain.BaseDirectory;string[] candidates={Path.Combine(baseDir,"TransferHost","VideoShelf.TransferHost.exe"),Path.Combine(baseDir,"TransferHostRuntime","VideoShelf.TransferHost.exe"),Path.Combine(baseDir,"VideoShelf.TransferHost.exe"),Path.Combine(baseDir,"TransferHost","bin","publish","VideoShelf.TransferHost.exe")};foreach(string path in candidates)if(File.Exists(path))return path;return "";}
- static string Q(string value){return "\""+(value??"").Replace("\"","\\\"")+"\"";}
+ static string Q(string value){
+  value=value??"";var b=new StringBuilder(value.Length+2);b.Append('"');int slashes=0;
+  foreach(char c in value){
+   if(c=='\\'){slashes++;continue;}
+   if(c=='"'){if(slashes>0)b.Append('\\',slashes*2);b.Append('\\');b.Append('"');slashes=0;continue;}
+   if(slashes>0){b.Append('\\',slashes);slashes=0;}b.Append(c);
+  }
+  if(slashes>0)b.Append('\\',slashes*2);b.Append('"');return b.ToString();
+ }
  static string PageArg(OnlineResult result){return result==null||string.IsNullOrWhiteSpace(result.PageUrl)?"":" --page "+Q(result.PageUrl);}
  static bool LaunchHost(IWin32Window owner,string arguments,string mode,string title,string destination){
   string host=FindHost();if(host.Length==0){MessageBox.Show(owner,"The VideoShelf transfer runtime is not installed beside VideoShelf.exe.\n\nUse the complete VideoShelf Windows package, which includes the TransferHost folder.","VideoShelf",MessageBoxButtons.OK,MessageBoxIcon.Information);return false;}
-  try{var process=Process.Start(new ProcessStartInfo(host,arguments){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(host)});if(process==null)throw new InvalidOperationException("The transfer runtime did not start.");process.EnableRaisingEvents=true;if(mode=="download"||mode=="stream"){var item=new TransferActivity{Id=System.Threading.Interlocked.Increment(ref nextId),Mode=mode,Title=title??"Torrent",Destination=destination??"",Started=DateTime.Now,Process=process};lock(gate){Prune();active.Add(item);}process.Exited+=delegate{lock(gate)Prune();};}return true;}catch(Exception ex){MessageBox.Show(owner,"Could not start the VideoShelf transfer runtime.\n\n"+ex.Message,"VideoShelf",MessageBoxButtons.OK,MessageBoxIcon.Error);return false;}
+  try{
+   var process=Process.Start(new ProcessStartInfo(host,arguments){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(host)});if(process==null)throw new InvalidOperationException("The transfer runtime did not start.");
+   if(mode=="download"||mode=="stream"){
+    process.EnableRaisingEvents=true;var item=new TransferActivity{Id=System.Threading.Interlocked.Increment(ref nextId),Mode=mode,Title=title??"Torrent",Destination=destination??"",Started=DateTime.Now,Process=process};lock(gate){Prune();active.Add(item);}process.Exited+=delegate{lock(gate)Prune();};
+   }else process.Dispose();
+   return true;
+  }catch(Exception ex){MessageBox.Show(owner,"Could not start the VideoShelf transfer runtime.\n\n"+ex.Message,"VideoShelf",MessageBoxButtons.OK,MessageBoxIcon.Error);return false;}
  }
  public static bool Stream(IWin32Window owner,OnlineResult result){if(result==null||string.IsNullOrWhiteSpace(result.Link)){MessageBox.Show(owner,"This result does not contain a torrent/magnet link that can be streamed.","VideoShelf");return false;}return LaunchHost(owner,"stream --source "+Q(result.Link)+PageArg(result)+" --title "+Q(result.Title),"stream",result.Title,"");}
  public static bool Download(IWin32Window owner,OnlineResult result,string suggestedFolder){
