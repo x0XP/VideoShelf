@@ -16,14 +16,63 @@ internal static class TransferUiCapture
         using (FullscreenPlayerController.Attach(stream))
             CaptureForm(stream, Path.Combine(outputDirectory, "VideoShelf-transfer-player.png"));
 
-        // Render the actual optimized player used by the stream command, but never show it.
-        // OptimizedStreamForm starts network/torrent work from Shown, so creating its handle and
-        // drawing it off-screen gives us a real runtime-layout regression check without media I/O.
-        var optimized = new OptimizedStreamForm(PreviewMagnet, PreviewTitle);
+        // Validate the actual optimized form used by the stream command without showing it.
+        // Creating/rendering LibVLC's native VideoView on a headless CI desktop can block, while
+        // the WinForms control tree and geometry can be validated safely before Shown starts any I/O.
+        using (var optimized = new OptimizedStreamForm(PreviewMagnet, PreviewTitle))
         using (FullscreenPlayerController.Attach(optimized))
-            CaptureUnshownForm(optimized, Path.Combine(outputDirectory, "VideoShelf-transfer-player-runtime.png"));
+            ValidateOptimizedPlayerLayout(optimized);
 
         CaptureForm(new FileListForm(PreviewMagnet, PreviewTitle, true), Path.Combine(outputDirectory, "VideoShelf-transfer-files.png"));
+    }
+
+    static void ValidateOptimizedPlayerLayout(Form form)
+    {
+        form.PerformLayout();
+        foreach (Control child in form.Controls) child.PerformLayout();
+
+        Panel? top = form.Controls.OfType<Panel>().FirstOrDefault(p => p.Dock == DockStyle.Top);
+        Panel? bottom = form.Controls.OfType<Panel>().FirstOrDefault(p => p.Dock == DockStyle.Bottom);
+        DarkComboBox? selector = FindControl<DarkComboBox>(form);
+        SeekBar? seek = FindControl<SeekBar>(form);
+        int iconButtons = CountControls<PlayerIconButton>(form);
+        bool hasNativeVideoSurface = FindControlByTypeName(form, "LibVLCSharp.WinForms.VideoView") != null;
+
+        if (top == null || bottom == null || selector == null || seek == null || iconButtons < 2 || !hasNativeVideoSurface)
+            throw new InvalidOperationException("The optimized streaming player control tree is incomplete.");
+        if (top.Height < 70 || bottom.Height < 55 || selector.Width < 300 || seek.Width < 120)
+            throw new InvalidOperationException("The optimized streaming player layout geometry regressed.");
+        if (top.Bottom > form.ClientSize.Height || bottom.Top < top.Bottom)
+            throw new InvalidOperationException("The optimized streaming player bars overlap or extend outside the form.");
+    }
+
+    static T? FindControl<T>(Control root) where T : Control
+    {
+        if (root is T match) return match;
+        foreach (Control child in root.Controls)
+        {
+            T? found = FindControl<T>(child);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    static Control? FindControlByTypeName(Control root, string fullName)
+    {
+        if (string.Equals(root.GetType().FullName, fullName, StringComparison.Ordinal)) return root;
+        foreach (Control child in root.Controls)
+        {
+            Control? found = FindControlByTypeName(child, fullName);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    static int CountControls<T>(Control root) where T : Control
+    {
+        int count = root is T ? 1 : 0;
+        foreach (Control child in root.Controls) count += CountControls<T>(child);
+        return count;
     }
 
     static void CaptureForm(Form form, string path)
@@ -38,19 +87,6 @@ internal static class TransferUiCapture
             Application.DoEvents();
             SaveBitmap(form, path);
             form.Hide();
-            host.Controls.Remove(form);
-        }
-        VerifyCapture(path);
-    }
-
-    static void CaptureUnshownForm(Form form, string path)
-    {
-        using (form)
-        using (var host = PrepareHost(form))
-        {
-            CreateControlTree(form);
-            PrepareLayout(form);
-            SaveBitmap(form, path);
             host.Controls.Remove(form);
         }
         VerifyCapture(path);
@@ -71,13 +107,6 @@ internal static class TransferUiCapture
         host.CreateControl();
         host.Controls.Add(form);
         return host;
-    }
-
-    static void CreateControlTree(Control root)
-    {
-        root.CreateControl();
-        foreach (Control child in root.Controls)
-            CreateControlTree(child);
     }
 
     static void PrepareLayout(Form form)
