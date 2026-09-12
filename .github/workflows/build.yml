@@ -10,8 +10,8 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
@@ -252,21 +252,21 @@ jobs:
           if ((Test-Path $builtIn) -and (Get-Item $builtIn).Length -gt 5000) { Copy-Item $builtIn .\VideoShelf-rezero-built-in.png }
 
       - name: Upload complete Windows package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VideoShelf-windows
           path: ${{ env.VIDEOSHELF_PACKAGE }}
           if-no-files-found: error
 
       - name: Upload tested Windows installer and icon
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VideoShelf-installer
           path: ${{ env.VIDEOSHELF_INSTALLER_DIR }}
           if-no-files-found: error
 
       - name: Upload available screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VideoShelf-screenshots
           path: VideoShelf-*.png
