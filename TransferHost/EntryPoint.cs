@@ -30,7 +30,6 @@ internal static class EntryPoint
                 {
                     ApplicationConfiguration.Initialize();
                     using var form = new OptimizedStreamForm(resolved, title);
-                    using var selection = TorrentVideoSelectionController.Attach(form, title);
                     using var fullScreen = FullscreenPlayerController.Attach(form);
                     Application.Run(form);
                     return;
