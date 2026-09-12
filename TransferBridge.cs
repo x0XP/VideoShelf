@@ -33,6 +33,10 @@ static class TransferBridge {
   }
   if(slashes>0)b.Append('\\',slashes*2);b.Append('"');return b.ToString();
  }
+ public static void SelfTest(){
+  if(Q(@"C:\")!="\"C:\\\\\"")throw new InvalidOperationException("Transfer argument quoting failed for a drive-root path.");
+  if(Q("plain value")!="\"plain value\"")throw new InvalidOperationException("Transfer argument quoting failed for whitespace.");
+ }
  static string PageArg(OnlineResult result){return result==null||string.IsNullOrWhiteSpace(result.PageUrl)?"":" --page "+Q(result.PageUrl);}
  static bool LaunchHost(IWin32Window owner,string arguments,string mode,string title,string destination){
   string host=FindHost();if(host.Length==0){MessageBox.Show(owner,"The VideoShelf transfer runtime is not installed beside VideoShelf.exe.\n\nUse the complete VideoShelf Windows package, which includes the TransferHost folder.","VideoShelf",MessageBoxButtons.OK,MessageBoxIcon.Information);return false;}
