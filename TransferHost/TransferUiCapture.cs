@@ -4,16 +4,22 @@ namespace VideoShelf.TransferHost;
 
 internal static class TransferUiCapture
 {
+    const string PreviewMagnet = "magnet:?xt=urn:btih:0123456789012345678901234567890123456789";
+    const string PreviewTitle = "Re:Zero – Starting Life in Another World (S1) [1080p]";
+
     public static void Capture(string outputDirectory)
     {
         Directory.CreateDirectory(outputDirectory);
-        CaptureForm(new DownloadForm("magnet:?xt=urn:btih:0123456789012345678901234567890123456789", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VideoShelf Downloads"), "Re:Zero – Starting Life in Another World (S1) [1080p]", true), Path.Combine(outputDirectory, "VideoShelf-transfer-download.png"));
+        CaptureForm(new DownloadForm(PreviewMagnet, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VideoShelf Downloads"), PreviewTitle, true), Path.Combine(outputDirectory, "VideoShelf-transfer-download.png"));
 
-        var stream = new StreamForm("magnet:?xt=urn:btih:0123456789012345678901234567890123456789", "Re:Zero – Starting Life in Another World (S1) [1080p]", true);
+        // Capture the actual optimized player layout. Fixture mode deliberately does not create
+        // LibVLC's native VideoView handle or start a torrent, so CI validates the production
+        // controls/layout without network traffic, media payload or headless native-video hangs.
+        var stream = new OptimizedStreamForm(PreviewMagnet, PreviewTitle, true);
         using (FullscreenPlayerController.Attach(stream))
             CaptureForm(stream, Path.Combine(outputDirectory, "VideoShelf-transfer-player.png"));
 
-        CaptureForm(new FileListForm("magnet:?xt=urn:btih:0123456789012345678901234567890123456789", "Re:Zero – Starting Life in Another World (S1) [1080p]", true), Path.Combine(outputDirectory, "VideoShelf-transfer-files.png"));
+        CaptureForm(new FileListForm(PreviewMagnet, PreviewTitle, true), Path.Combine(outputDirectory, "VideoShelf-transfer-files.png"));
     }
 
     static void CaptureForm(Form form, string path)
