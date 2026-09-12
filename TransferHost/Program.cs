@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using LibVLCSharp.Shared;
-using LibVLCSharp.WinForms;
 using MonoTorrent;
 using MonoTorrent.Client;
 
@@ -11,8 +11,7 @@ namespace VideoShelf.TransferHost;
 
 internal static class Program
 {
-    [STAThread]
-    static void Main(string[] args)
+    internal static void Run(string[] args)
     {
         ApplicationConfiguration.Initialize();
         try
@@ -38,12 +37,6 @@ internal static class Program
             {
                 string destination = values.Required("destination");
                 Application.Run(new DownloadForm(source, destination, title));
-                return;
-            }
-
-            if (command == "stream")
-            {
-                Application.Run(new StreamForm(source, title));
                 return;
             }
 
@@ -118,18 +111,19 @@ internal sealed class TorrentSession : IAsyncDisposable
 {
     const int MaxMetadataBytes = 16 * 1024 * 1024;
     static readonly HttpClient Http = CreateHttp();
+    static readonly MethodInfo? MetadataOnlyStart = typeof(TorrentManager)
+        .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+        .FirstOrDefault(m => m.Name == "StartAsync" && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType == typeof(bool));
     readonly string cacheRoot;
-    readonly string? httpPrefix;
     string? metadataFile;
 
     public ClientEngine Engine { get; }
     public TorrentManager? Manager { get; private set; }
 
-    public TorrentSession(string cacheRoot, bool streaming)
+    public TorrentSession(string cacheRoot)
     {
         this.cacheRoot = cacheRoot;
         Directory.CreateDirectory(cacheRoot);
-        httpPrefix = streaming ? $"http://127.0.0.1:{FindFreePort()}/" : null;
         var builder = new EngineSettingsBuilder
         {
             AllowPortForwarding = true,
@@ -138,7 +132,6 @@ internal sealed class TorrentSession : IAsyncDisposable
             AutoSaveLoadMagnetLinkMetadata = true,
             CacheDirectory = cacheRoot
         };
-        if (streaming && httpPrefix != null) builder.HttpStreamingPrefix = httpPrefix;
         Engine = new ClientEngine(builder.ToSettings());
     }
 
@@ -149,22 +142,11 @@ internal sealed class TorrentSession : IAsyncDisposable
         return client;
     }
 
-    static int FindFreePort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
-
-    public async Task<TorrentManager> AddAsync(string source, string destination, bool streaming, CancellationToken token)
+    public async Task<TorrentManager> AddAsync(string source, string destination, CancellationToken token)
     {
         if (MagnetLink.TryParse(source, out MagnetLink? magnet) && magnet != null)
         {
-            Manager = streaming
-                ? await Engine.AddStreamingAsync(magnet, destination)
-                : await Engine.AddAsync(magnet, destination);
+            Manager = await Engine.AddAsync(magnet, destination);
             return Manager;
         }
 
@@ -192,14 +174,25 @@ internal sealed class TorrentSession : IAsyncDisposable
             }
         }
 
-        Manager = streaming
-            ? await Engine.AddStreamingAsync(metadataFile, destination)
-            : await Engine.AddAsync(metadataFile, destination);
+        Manager = await Engine.AddAsync(metadataFile, destination);
         return Manager;
     }
 
-    public string StreamingUrl(string relativeUri)
-        => httpPrefix is null ? throw new InvalidOperationException("This is not a streaming session.") : httpPrefix.TrimEnd('/') + "/" + relativeUri.TrimStart('/');
+    public static async Task StartMetadataOnlyAsync(TorrentManager manager)
+    {
+        if (manager == null) throw new ArgumentNullException(nameof(manager));
+        if (MetadataOnlyStart == null)
+            throw new MissingMethodException("MonoTorrent metadata-only startup API is unavailable.");
+        object? invoked;
+        try { invoked = MetadataOnlyStart.Invoke(manager, new object[] { true }); }
+        catch (TargetInvocationException ex) when (ex.InnerException != null)
+        {
+            ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+            throw;
+        }
+        if (invoked is Task task) await task;
+        else throw new InvalidOperationException("MonoTorrent metadata startup did not return a task.");
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -215,16 +208,14 @@ internal sealed class TorrentSession : IAsyncDisposable
     {
         if (!MagnetLink.TryParse("magnet:?xt=urn:btih:0123456789012345678901234567890123456789&dn=VideoShelfSelfTest", out _))
             throw new InvalidOperationException("MonoTorrent magnet parsing failed.");
+        if (MetadataOnlyStart == null)
+            throw new InvalidOperationException("MonoTorrent metadata-only startup API changed; torrent file inspection cannot safely retrieve magnet metadata.");
         string root = Path.Combine(Path.GetTempPath(), "VideoShelf-transfer-selftest-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
         {
-            var normalSession = new TorrentSession(Path.Combine(root, "normal"), false);
+            var normalSession = new TorrentSession(Path.Combine(root, "normal"));
             normalSession.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            var streamingSession = new TorrentSession(Path.Combine(root, "streaming"), true);
-            if (!streamingSession.StreamingUrl("probe").StartsWith("http://127.0.0.1:", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("VideoShelf streaming endpoint was not configured correctly.");
-            streamingSession.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Core.Initialize();
             using var vlc = new LibVLC("--no-video-title-show", "--network-caching=1800");
             using var player = new MediaPlayer(vlc);
@@ -275,14 +266,16 @@ internal sealed class DownloadForm : Form
         {
             Directory.CreateDirectory(destination);
             openFolder.Enabled = true;
-            session = new TorrentSession(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "TorrentMetadata"), false);
-            manager = await session.AddAsync(source, destination, false, cts.Token);
+            var transferSession = new TorrentSession(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "TorrentMetadata"));
+            session = transferSession;
+            var torrentManager = await transferSession.AddAsync(source, destination, cts.Token);
+            manager = torrentManager;
             state.Text = "Connecting to peers…";
-            await manager.StartAsync();
+            await torrentManager.StartAsync();
             uiTimer.Start();
-            await manager.WaitForMetadataAsync(cts.Token);
+            await torrentManager.WaitForMetadataAsync(cts.Token);
             state.Text = "Downloading…";
-            while (!cts.IsCancellationRequested && manager.Progress < 99.999)
+            while (!cts.IsCancellationRequested && torrentManager.Progress < 99.999)
                 await Task.Delay(500, cts.Token);
             if (!cts.IsCancellationRequested)
             {
@@ -320,249 +313,5 @@ internal sealed class DownloadForm : Form
         cts.Dispose();
         e.Cancel = false;
         BeginInvoke(Close);
-    }
-}
-
-internal sealed class StreamForm : Form
-{
-    static readonly HashSet<string> Playable = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".vob" };
-    readonly string source;
-    readonly Panel videoHost = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
-    readonly VideoView video = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
-    readonly Label videoOverlay = Theme.Label("Preparing stream…", true);
-    readonly DarkComboBox fileChoice = new() { Width = 390 };
-    readonly Label status = Theme.Label("Preparing torrent metadata…"), timeLabel = Theme.Label("00:00 / 00:00");
-    readonly Button playPause = Theme.Button("Play", 90), stop = Theme.Button("Stop", 80);
-    readonly SeekBar seek = new() { Width = 280, Enabled = false };
-    readonly System.Windows.Forms.Timer uiTimer = new() { Interval = 350 };
-    readonly CancellationTokenSource cts = new();
-    readonly SemaphoreSlim playbackGate = new(1, 1);
-    readonly string cache;
-    readonly bool previewOnly;
-    TorrentSession? session;
-    TorrentManager? manager;
-    LibVLC? vlc;
-    MediaPlayer? player;
-    Media? currentMedia;
-    object? currentHttpStream;
-    List<ITorrentManagerFile> playable = new();
-    ITorrentManagerFile? selected;
-    int playbackRevision;
-    bool closing;
-
-    public StreamForm(string source, string title, bool previewOnly = false)
-    {
-        this.source = source; this.previewOnly = previewOnly;
-        cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "StreamingCache", Guid.NewGuid().ToString("N"));
-        Theme.Form(this, "Stream locally", new Size(1060, 720)); MinimumSize = new Size(800, 560);
-        var top = new Panel { Dock = DockStyle.Top, Height = 96, BackColor = Theme.Background };
-        var accentTop = new Panel { Dock = DockStyle.Top, Height = 2, BackColor = Theme.Blue };
-        var accentLeft = new Panel { Dock = DockStyle.Left, Width = 3, BackColor = Theme.Red };
-        var heading = Theme.Label(title, true); heading.SetBounds(22, 14, 900, 27); heading.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; heading.AutoEllipsis = true;
-        var fileLabel = Theme.Label("Video"); fileLabel.SetBounds(22, 54, 42, 26);
-        fileChoice.SetBounds(70, 52, 430, 31); fileChoice.Enabled = false;
-        status.SetBounds(520, 54, 500, 25); status.Anchor = AnchorStyles.Top | AnchorStyles.Left; status.AutoEllipsis = true;
-        top.Controls.AddRange(new Control[] { accentTop, accentLeft, heading, fileLabel, fileChoice, status });
-
-        videoOverlay.Dock = DockStyle.Fill; videoOverlay.TextAlign = ContentAlignment.MiddleCenter; videoOverlay.BackColor = Color.Black; videoOverlay.ForeColor = Theme.Muted; videoOverlay.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
-        video.Visible = false;
-        videoHost.Controls.Add(video); videoHost.Controls.Add(videoOverlay); videoOverlay.BringToFront();
-
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 68, BackColor = Theme.Background };
-        playPause.SetBounds(22, 16, 90, 34); playPause.Enabled = false;
-        stop.SetBounds(122, 16, 80, 34);
-        seek.SetBounds(220, 18, 650, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Top;
-        timeLabel.SetBounds(880, 22, 150, 22); timeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left; timeLabel.TextAlign = ContentAlignment.MiddleRight; timeLabel.ForeColor = Color.FromArgb(190, 205, 220);
-        bottom.Controls.AddRange(new Control[] { playPause, stop, seek, timeLabel });
-        Controls.Add(videoHost); Controls.Add(bottom); Controls.Add(top);
-
-        if (!previewOnly) Shown += async (_, _) => await StartAsync();
-        else PreparePreview(title);
-        FormClosing += OnClosing;
-        fileChoice.SelectedIndexChanged += async (_, _) => { if (!previewOnly && fileChoice.SelectedIndex >= 0 && fileChoice.SelectedIndex < playable.Count && playable[fileChoice.SelectedIndex] != selected) await PlayFileAsync(playable[fileChoice.SelectedIndex]); };
-        playPause.Click += (_, _) => TogglePlayback();
-        stop.Click += (_, _) => Close();
-        seek.ValueCommitted += (_, _) => CommitSeek();
-        uiTimer.Tick += (_, _) => RefreshStats();
-        Resize += (_, _) => LayoutPlayer();
-        LayoutPlayer();
-    }
-
-    void PreparePreview(string title)
-    {
-        fileChoice.Items.Add("Episode 01.mkv  (1.4 GB)"); fileChoice.SelectedIndex = 0; fileChoice.Enabled = true;
-        status.Text = "Streaming • 4.8 MB/s • temporary cache";
-        video.Visible = false; videoOverlay.Visible = true;
-        videoOverlay.Text = "VIDEO PREVIEW\n\nTorrent pieces stream into VideoShelf's temporary cache as needed.";
-        playPause.Enabled = true; playPause.Text = "Pause"; seek.Enabled = true; seek.Value = 318; timeLabel.Text = "08:12 / 25:49";
-    }
-
-    void LayoutPlayer()
-    {
-        status.Width = Math.Max(180, ClientSize.Width - status.Left - 22);
-        int timeWidth = 150;
-        int timeX = Math.Max(420, ClientSize.Width - 22 - timeWidth);
-        timeLabel.SetBounds(timeX, 22, timeWidth, 22);
-        seek.SetBounds(220, 18, Math.Max(180, timeX - 232), 30);
-    }
-
-    async Task StartAsync()
-    {
-        try
-        {
-            video.Visible = false; videoOverlay.Visible = true;
-            Directory.CreateDirectory(cache);
-            session = new TorrentSession(Path.Combine(cache, "metadata"), true);
-            manager = await session.AddAsync(source, cache, true, cts.Token);
-            status.Text = "Connecting • metadata only so far";
-            videoOverlay.Text = "Retrieving torrent metadata…";
-            await manager.StartAsync();
-            await manager.WaitForMetadataAsync(cts.Token);
-            playable = manager.Files.Where(f => Playable.Contains(Path.GetExtension(f.Path))).OrderByDescending(f => f.Length).ToList();
-            if (playable.Count == 0) throw new InvalidOperationException("This torrent does not contain a supported video file.");
-
-            foreach (var file in manager.Files) await manager.SetFilePriorityAsync(file, Priority.DoNotDownload);
-            fileChoice.BeginUpdate();
-            foreach (var file in playable) fileChoice.Items.Add($"{file.Path}  ({FormatSize(file.Length)})");
-            fileChoice.EndUpdate();
-            fileChoice.Enabled = true;
-
-            Core.Initialize();
-            vlc = new LibVLC("--no-video-title-show", "--network-caching=1800", "--clock-jitter=0", "--clock-synchro=0");
-            player = new MediaPlayer(vlc);
-            video.MediaPlayer = player;
-            uiTimer.Start();
-            fileChoice.SelectedIndex = 0;
-        }
-        catch (OperationCanceledException) { if (!closing) Close(); }
-        catch (Exception ex)
-        {
-            video.Visible = false; videoOverlay.Visible = true;
-            videoOverlay.Text = "Unable to start this stream";
-            status.Text = ex.Message;
-            MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
-    async Task PlayFileAsync(ITorrentManagerFile file)
-    {
-        int request = Interlocked.Increment(ref playbackRevision);
-        try
-        {
-            await playbackGate.WaitAsync(cts.Token);
-            try
-            {
-                if (request != playbackRevision || closing || manager == null || session == null || player == null || vlc == null) return;
-                selected = file;
-                status.Text = "Buffering selected video…";
-                videoOverlay.Text = "Buffering selected video…";
-                video.Visible = false; videoOverlay.Visible = true;
-                playPause.Enabled = false; seek.Enabled = false;
-
-                try { player.Stop(); } catch { }
-                currentMedia?.Dispose(); currentMedia = null;
-                await DisposeHttpStreamAsync();
-
-                foreach (var item in manager.Files)
-                    await manager.SetFilePriorityAsync(item, item == file ? Priority.High : Priority.DoNotDownload);
-
-                var httpStream = await manager.StreamProvider.CreateHttpStreamAsync(file, cts.Token);
-                if (request != playbackRevision || closing) { await DisposeObjectAsync(httpStream); return; }
-                currentHttpStream = httpStream;
-                string url = session.StreamingUrl(httpStream.RelativeUri);
-                currentMedia = new Media(vlc, new Uri(url));
-                bool started = player.Play(currentMedia);
-                if (!started) throw new InvalidOperationException("LibVLC could not start playback for the selected torrent file.");
-                playPause.Text = "Pause"; playPause.Enabled = true; seek.Enabled = true;
-                video.Visible = true; videoOverlay.Visible = false;
-            }
-            finally { playbackGate.Release(); }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            if (closing) return;
-            status.Text = "Playback failed • " + ex.Message;
-            video.Visible = false;
-            videoOverlay.Text = "Playback failed\n\n" + ex.Message;
-            videoOverlay.Visible = true;
-            playPause.Text = "Play"; playPause.Enabled = player != null;
-        }
-    }
-
-    void TogglePlayback()
-    {
-        if (previewOnly) { playPause.Text = playPause.Text == "Pause" ? "Play" : "Pause"; return; }
-        if (player == null || currentMedia == null) return;
-        if (player.IsPlaying) { player.Pause(); playPause.Text = "Play"; }
-        else { video.Visible = true; player.Play(); playPause.Text = "Pause"; videoOverlay.Visible = false; }
-    }
-
-    void CommitSeek()
-    {
-        if (previewOnly) return;
-        if (player != null && player.Length > 0)
-            player.Time = (long)(player.Length * (seek.Value / 1000d));
-    }
-
-    void RefreshStats()
-    {
-        if (manager != null && selected != null)
-            status.Text = $"{manager.State} • {manager.Monitor.DownloadRate / (1024d * 1024d):0.0} MB/s • temporary cache";
-        if (player != null && player.Length > 0)
-        {
-            if (!seek.Focused) seek.Value = Math.Max(0, Math.Min(1000, (int)(player.Time * 1000d / player.Length)));
-            timeLabel.Text = $"{FormatTime(player.Time)} / {FormatTime(player.Length)}";
-            if (!player.IsPlaying && player.Time > 0 && player.Time < player.Length - 1000) playPause.Text = "Play";
-        }
-    }
-
-    async ValueTask DisposeHttpStreamAsync()
-    {
-        object? old = currentHttpStream; currentHttpStream = null;
-        if (old != null) await DisposeObjectAsync(old);
-    }
-
-    static async ValueTask DisposeObjectAsync(object value)
-    {
-        try
-        {
-            if (value is IAsyncDisposable asyncDisposable) await asyncDisposable.DisposeAsync();
-            else if (value is IDisposable disposable) disposable.Dispose();
-        }
-        catch { }
-    }
-
-    static string FormatTime(long milliseconds)
-    {
-        if (milliseconds < 0) milliseconds = 0;
-        TimeSpan time = TimeSpan.FromMilliseconds(milliseconds);
-        return time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");
-    }
-
-    static string FormatSize(long bytes) => bytes >= 1024L * 1024 * 1024 ? $"{bytes / (1024d * 1024d * 1024d):0.0} GB" : $"{bytes / (1024d * 1024d):0.0} MB";
-
-    async void OnClosing(object? sender, FormClosingEventArgs e)
-    {
-        if (closing) return;
-        closing = true; e.Cancel = true; Interlocked.Increment(ref playbackRevision); cts.Cancel(); uiTimer.Stop();
-        if (!previewOnly)
-        {
-            try { await playbackGate.WaitAsync(); }
-            catch { }
-            try
-            {
-                try { player?.Stop(); } catch { }
-                currentMedia?.Dispose(); currentMedia = null;
-                await DisposeHttpStreamAsync();
-                video.MediaPlayer = null;
-                player?.Dispose(); vlc?.Dispose();
-                if (session != null) await session.DisposeAsync();
-            }
-            finally { try { playbackGate.Release(); } catch { } }
-        }
-        playbackGate.Dispose(); cts.Dispose();
-        try { Directory.Delete(cache, true); } catch { }
-        e.Cancel = false; BeginInvoke(Close);
     }
 }
