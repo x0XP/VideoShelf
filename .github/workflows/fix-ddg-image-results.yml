@@ -28,23 +28,26 @@ jobs:
           $portrait = $portrait.Replace('&p=1&kp=-2', '&p=-2&kp=-2')
           $thumb = $thumb.Replace('&p=1&kp=-2', '&p=-2&kp=-2')
 
-          $oldPortrait = '   if(++tried>8)break;string image=Value(row,"thumbnail");if(image.Length==0)image=Value(row,"image");if(image.Length==0)continue;`n   try{var photo=Decode(await Get(image,5*1024*1024,ct).ConfigureAwait(false));return new PortraitResult{Photo=photo,Source=Value(row,"url")};}`n   catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}'
-          $newPortrait = '   if(++tried>8)break;string original=Value(row,"image"),thumbnail=Value(row,"thumbnail");`n   string[] images=new[]{original,thumbnail}.Where(x=>x.Length>0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();`n   foreach(string image in images){`n    try{var photo=Decode(await Get(image,5*1024*1024,ct).ConfigureAwait(false));return new PortraitResult{Photo=photo,Source=Value(row,"url")};}`n    catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}`n   }'
-          if (-not $portrait.Contains($oldPortrait)) { throw 'Portrait image selection block was not found.' }
+          $oldPortrait = 'string image=Value(row,"thumbnail");if(image.Length==0)image=Value(row,"image");if(image.Length==0)continue;'
+          $newPortrait = 'string image=Value(row,"image");if(image.Length==0)image=Value(row,"thumbnail");if(image.Length==0)continue;'
+          if (-not $portrait.Contains($oldPortrait)) { throw 'Portrait image preference was not found.' }
           $portrait = $portrait.Replace($oldPortrait, $newPortrait)
 
-          $oldThumb = '  foreach(var candidate in ranked){`n   ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"thumbnail");if(image.Length==0)image=Value(candidate.Row,"image");if(image.Length==0)continue;`n   try{`n    Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));`n    string source=Value(candidate.Row,"url");try{Store(title,framed,source);}catch{}`n    return new OnlineThumbnailResult{Image=framed,Source=source};`n   }catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}`n  }'
-          $newThumb = '  foreach(var candidate in ranked){`n   ct.ThrowIfCancellationRequested();string original=Value(candidate.Row,"image"),thumbnail=Value(candidate.Row,"thumbnail");`n   string[] images=new[]{original,thumbnail}.Where(x=>x.Length>0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();`n   foreach(string image in images){`n    try{`n     Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));`n     string source=Value(candidate.Row,"url");try{Store(title,framed,source);}catch{}`n     return new OnlineThumbnailResult{Image=framed,Source=source};`n    }catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}`n   }`n  }'
-          if (-not $thumb.Contains($oldThumb)) { throw 'Online thumbnail image selection block was not found.' }
+          $oldThumb = 'ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"thumbnail");if(image.Length==0)image=Value(candidate.Row,"image");if(image.Length==0)continue;'
+          $newThumb = 'ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"image");if(image.Length==0)image=Value(candidate.Row,"thumbnail");if(image.Length==0)continue;'
+          if (-not $thumb.Contains($oldThumb)) { throw 'Online thumbnail image preference was not found.' }
           $thumb = $thumb.Replace($oldThumb, $newThumb)
 
-          $oldCache = '  string key=Identify(title).CacheIdentity;'
-          $newCache = '  string key="v2|"+Identify(title).CacheIdentity;'
+          $oldCache = 'string key=Identify(title).CacheIdentity;'
+          $newCache = 'string key="v2|"+Identify(title).CacheIdentity;'
           if (-not $thumb.Contains($oldCache)) { throw 'Online thumbnail cache key was not found.' }
           $thumb = $thumb.Replace($oldCache, $newCache)
 
-          if ($portrait -match '&p=1&kp=-2' -or $thumb -match '&p=1&kp=-2') { throw 'Strict image endpoint Safe Search parameter is still present.' }
-          if ($portrait -notmatch '&p=-2&kp=-2' -or $thumb -notmatch '&p=-2&kp=-2') { throw 'Safe Search off image endpoint parameter is missing.' }
+          if ($portrait.Contains('&p=1&kp=-2') -or $thumb.Contains('&p=1&kp=-2')) { throw 'Strict image endpoint Safe Search parameter is still present.' }
+          if (-not $portrait.Contains('&p=-2&kp=-2') -or -not $thumb.Contains('&p=-2&kp=-2')) { throw 'Safe Search off image endpoint parameter is missing.' }
+          if (-not $portrait.Contains('string image=Value(row,"image");if(image.Length==0)image=Value(row,"thumbnail")')) { throw 'Portrait original image preference was not applied.' }
+          if (-not $thumb.Contains('string image=Value(candidate.Row,"image");if(image.Length==0)image=Value(candidate.Row,"thumbnail")')) { throw 'Online original image preference was not applied.' }
+          if (-not $thumb.Contains('string key="v2|"+Identify(title).CacheIdentity;')) { throw 'Thumbnail cache version was not applied.' }
 
           Set-Content -Path $portraitPath -Value $portrait -NoNewline
           Set-Content -Path $thumbPath -Value $thumb -NoNewline
