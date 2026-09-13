@@ -49,6 +49,7 @@
     <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Library.cs" />
     <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Online.cs" />
     <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Updates.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\UpdateProgressForm.cs" />
     <Compile Include="src\VideoShelf\Search\PortraitLookup.cs" />
     <Compile Include="src\VideoShelf\Search\OnlineSearch.cs" />
     <Compile Include="src\VideoShelf\Search\BuiltInOnlineSearch.cs" />
