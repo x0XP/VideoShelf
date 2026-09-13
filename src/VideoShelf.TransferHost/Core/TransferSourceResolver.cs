@@ -29,18 +29,15 @@ internal static class TransferSourceResolver
         // is always preferable to waiting for BEP9 metadata from a peer.
         if (LooksLikeTorrentMetadata(source)) return source;
 
-        // Search feeds commonly give VideoShelf both a magnet and a human-facing
-        // details page. Resolve the page before accepting the magnet so we can use
-        // a direct torrent metadata URL when the indexer exposes one.
+        // Some indexers expose a deterministic direct torrent URL through the
+        // details page. Use only transformations we can derive locally here so a
+        // magnet source never waits on an extra HTTP page request before DHT starts.
         if (!string.IsNullOrWhiteSpace(pageUrl))
         {
             string page = pageUrl.Trim();
             string known = NormalizeKnownPage(page);
             if (!known.Equals(page, StringComparison.OrdinalIgnoreCase) && LooksLikeTorrentMetadata(known))
                 return known;
-
-            string resolved = await ResolvePageAsync(page, token).ConfigureAwait(false);
-            if (resolved.Length > 0) return resolved;
         }
 
         if (MagnetLink.TryParse(source, out MagnetLink? direct) && direct != null) return source;
@@ -48,6 +45,12 @@ internal static class TransferSourceResolver
         if (LooksLikePage(source))
         {
             string resolved = await ResolvePageAsync(source, token).ConfigureAwait(false);
+            if (resolved.Length > 0) return resolved;
+        }
+
+        if (!string.IsNullOrWhiteSpace(pageUrl))
+        {
+            string resolved = await ResolvePageAsync(pageUrl.Trim(), token).ConfigureAwait(false);
             if (resolved.Length > 0) return resolved;
         }
 
