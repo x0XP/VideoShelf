@@ -24,7 +24,11 @@ static class Program {
   if(detailArg>=0){try{string output=(detailArg+1<args.Length&&args[detailArg+1].Length>0)?args[detailArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero-detail.png");ScreenshotHarness.CaptureReZeroDetail(output);Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int screenshotArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-rezero",StringComparison.OrdinalIgnoreCase));
   if(screenshotArg>=0){try{string output=(screenshotArg+1<args.Length&&args[screenshotArg+1].Length>0)?args[screenshotArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero.png");ScreenshotHarness.CaptureReZero(output);Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
-  Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);var shelf=new Shelf();shelf.InitializeUpdater();Application.Run(shelf);
+  bool ownsInstance;
+  using(var singleInstance=new Mutex(true,@"Local\VideoShelf-52B6117F-2222-49BB-935D-8C7FA18DC42B",out ownsInstance)){
+   if(!ownsInstance)return;
+   Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);var shelf=new Shelf();shelf.InitializeUpdater();Application.Run(shelf);
+  }
  }
 }
 sealed class Person { public string Path,Name; public Image Photo; public string PhotoSource="",PhotoError=""; public int PhotoVersion; }
