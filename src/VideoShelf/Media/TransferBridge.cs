@@ -11,7 +11,11 @@ sealed class TransferActivity {
  public int Id; public string Mode="",Title="",Destination=""; public DateTime Started; public Process Process;
 }
 static class TransferBridge {
- static readonly object gate=new object();static readonly List<TransferActivity> active=new List<TransferActivity>();static int nextId;
+ static readonly object gate=new object();
+ static readonly List<TransferActivity> active=new List<TransferActivity>();
+ static readonly List<Process> discoveryProcesses=new List<Process>();
+ static readonly HashSet<string> prefetched=new HashSet<string>(StringComparer.Ordinal);
+ static int nextId;static bool discoveryWarmupStarted;
  public static int ActiveDownloads {get{lock(gate){Prune();return active.Count(a=>a.Mode=="download");}}}
  public static int ActiveStreams {get{lock(gate){Prune();return active.Count(a=>a.Mode=="stream");}}}
  public static List<TransferActivity> Snapshot(string mode){lock(gate){Prune();return active.Where(a=>a.Mode.Equals(mode,StringComparison.OrdinalIgnoreCase)).OrderByDescending(a=>a.Started).Select(a=>new TransferActivity{Id=a.Id,Mode=a.Mode,Title=a.Title,Destination=a.Destination,Started=a.Started,Process=a.Process}).ToList();}}
@@ -22,6 +26,7 @@ static class TransferBridge {
    if(!finished)continue;
    active.RemoveAt(i);try{if(process!=null)process.Dispose();}catch{}
   }
+  for(int i=discoveryProcesses.Count-1;i>=0;i--){var p=discoveryProcesses[i];bool finished=false;try{finished=p==null||p.HasExited;}catch{finished=true;}if(!finished)continue;discoveryProcesses.RemoveAt(i);try{if(p!=null)p.Dispose();}catch{}}
  }
  static string FindHost(){string baseDir=AppDomain.CurrentDomain.BaseDirectory;string[] candidates={Path.Combine(baseDir,"TransferHost","VideoShelf.TransferHost.exe"),Path.Combine(baseDir,"TransferHostRuntime","VideoShelf.TransferHost.exe"),Path.Combine(baseDir,"VideoShelf.TransferHost.exe"),Path.Combine(baseDir,"TransferHost","bin","publish","VideoShelf.TransferHost.exe")};foreach(string path in candidates)if(File.Exists(path))return path;return "";}
  static string Q(string value){
@@ -38,6 +43,26 @@ static class TransferBridge {
   if(Q("plain value")!="\"plain value\"")throw new InvalidOperationException("Transfer argument quoting failed for whitespace.");
  }
  static string PageArg(OnlineResult result){return result==null||string.IsNullOrWhiteSpace(result.PageUrl)?"":" --page "+Q(result.PageUrl);}
+ static bool LaunchHidden(string arguments){
+  string host=FindHost();if(host.Length==0)return false;
+  try{
+   var process=Process.Start(new ProcessStartInfo(host,arguments){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,WorkingDirectory=Path.GetDirectoryName(host)});if(process==null)return false;
+   lock(gate){Prune();discoveryProcesses.Add(process);}return true;
+  }catch{return false;}
+ }
+ public static void WarmDiscovery(){
+  lock(gate){if(discoveryWarmupStarted)return;discoveryWarmupStarted=true;}
+  LaunchHidden("warm");
+ }
+ public static void Prefetch(OnlineResult result){
+  if(result==null||string.IsNullOrWhiteSpace(result.Link))return;
+  string key=(result.Link??"")+"\n"+(result.PageUrl??"");
+  lock(gate){Prune();if(prefetched.Contains(key))return;prefetched.Add(key);if(discoveryProcesses.Count>=3)return;}
+  LaunchHidden("prefetch --source "+Q(result.Link)+PageArg(result));
+ }
+ public static void StopDiscovery(){
+  lock(gate){foreach(var process in discoveryProcesses.ToArray()){try{if(process!=null&&!process.HasExited)process.Kill();}catch{}try{if(process!=null)process.Dispose();}catch{}}discoveryProcesses.Clear();}
+ }
  static bool LaunchHost(IWin32Window owner,string arguments,string mode,string title,string destination){
   string host=FindHost();if(host.Length==0){MessageBox.Show(owner,"The VideoShelf transfer runtime is not installed beside VideoShelf.exe.\n\nUse the complete VideoShelf Windows package, which includes the TransferHost folder.","VideoShelf",MessageBoxButtons.OK,MessageBoxIcon.Information);return false;}
   try{
