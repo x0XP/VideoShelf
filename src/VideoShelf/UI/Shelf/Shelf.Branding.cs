@@ -75,7 +75,7 @@ sealed partial class Shelf {
  void ReplaceTitleImage(){
   if(titleBrand==null||titleBrand.IsDisposed)return;
   Image old=titleBrand.Image;
-  titleBrand.Image=AppBrand.Bitmap(titleBrand.Width,titleBrand.Height);
+  titleBrand.Image=AppBrand.TitleBitmap(titleBrand.Width,titleBrand.Height);
   if(old!=null)try{old.Dispose();}catch{}
  }
 
