@@ -9,7 +9,7 @@ using System.Windows.Forms;
 namespace VideoShelf {
 static class Program {
  [STAThread] static void Main(string[] args) {
-  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{FolderNaming.SelfTest();BuiltInOnlineSearch.SelfTest();TransferBridge.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
+  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{AppVersion.SelfTest();UpdateService.SelfTest();FolderNaming.SelfTest();BuiltInOnlineSearch.SelfTest();TransferBridge.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int builtInArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--test-built-in-online",StringComparison.OrdinalIgnoreCase));
   if(builtInArg>=0){try{string query=(builtInArg+1<args.Length&&args[builtInArg+1].Length>0)?args[builtInArg+1]:"re zero";using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(18))){var found=BuiltInOnlineSearch.Search(query,timeout.Token).GetAwaiter().GetResult();if(found.Count==0)throw new InvalidOperationException("Built-in online search returned no seeded results for "+query+".");if(found.Any(r=>r.Seeders<=0||string.IsNullOrWhiteSpace(r.Link)))throw new InvalidOperationException("Built-in online search returned an invalid or zero-seeder result.");Console.WriteLine("Built-in online search returned "+found.Count+" seeded result(s). Sources: "+string.Join(", ",found.Select(r=>r.Source).Distinct(StringComparer.OrdinalIgnoreCase).Take(8)));}Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int builtInShotArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-built-in-online",StringComparison.OrdinalIgnoreCase));
@@ -24,7 +24,7 @@ static class Program {
   if(detailArg>=0){try{string output=(detailArg+1<args.Length&&args[detailArg+1].Length>0)?args[detailArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero-detail.png");ScreenshotHarness.CaptureReZeroDetail(output);Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int screenshotArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-rezero",StringComparison.OrdinalIgnoreCase));
   if(screenshotArg>=0){try{string output=(screenshotArg+1<args.Length&&args[screenshotArg+1].Length>0)?args[screenshotArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero.png");ScreenshotHarness.CaptureReZero(output);Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
-  Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);Application.Run(new Shelf());
+  Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);var shelf=new Shelf();shelf.InitializeUpdater();Application.Run(shelf);
  }
 }
 sealed class Person { public string Path,Name; public Image Photo; public string PhotoSource="",PhotoError=""; public int PhotoVersion; }
