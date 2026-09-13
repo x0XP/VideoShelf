@@ -108,7 +108,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if (gh release view 'v1.7.1' --repo $env:GITHUB_REPOSITORY 2>$null) { throw 'Release v1.7.1 already exists.' }
           $notes = @"
           ## VideoShelf v1.7.1
 
