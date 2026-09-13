@@ -1,0 +1,113 @@
+name: Update relaunch regression
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'installer/VideoShelf.iss'
+      - 'src/VideoShelf/Application/AppVersion.cs'
+      - 'src/VideoShelf/Application/UpdateService.cs'
+      - 'src/VideoShelf/Application/VideoShelf.cs'
+      - '.github/workflows/update-relaunch.yml'
+
+jobs:
+  update-relaunch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build VideoShelf and transfer runtime
+        shell: powershell
+        run: |
+          cmd /c Start.cmd --build-only
+          if ($LASTEXITCODE -ne 0) { throw 'VideoShelf build failed.' }
+
+          $package = Join-Path $env:RUNNER_TEMP 'VideoShelf-update-package'
+          $transferDir = Join-Path $package 'TransferHost'
+          New-Item -ItemType Directory -Force -Path $transferDir | Out-Null
+          dotnet publish '.\src\VideoShelf.TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
+          if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
+          Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
+          Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
+          Copy-Item '.\VideoShelf.png' (Join-Path $package 'VideoShelf.png')
+          "VIDEOSHELF_UPDATE_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build update installer
+        shell: powershell
+        run: |
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+            $iscc = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'ISCC.exe was not found.' }
+
+          $source = Get-Content '.\src\VideoShelf\Application\AppVersion.cs' -Raw
+          $match = [regex]::Match($source, 'Current\s*=\s*"([0-9]+(?:\.[0-9]+){1,3})"')
+          if (-not $match.Success) { throw 'Could not resolve AppVersion.Current.' }
+          $version = $match.Groups[1].Value
+
+          $installerDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-update-installer'
+          New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
+          & $iscc "/DSourceDir=$env:VIDEOSHELF_UPDATE_PACKAGE" "/DOutputDir=$installerDir" "/DAppVersion=$version" '.\installer\VideoShelf.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Update installer compilation failed.' }
+          $installer = Join-Path $installerDir 'VideoShelf-Setup-v1.7.exe'
+          if (!(Test-Path $installer)) { throw 'Update installer was not created.' }
+          "VIDEOSHELF_UPDATE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Prove silent upgrade relaunches VideoShelf
+        shell: powershell
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-update-install'
+          $mainExe = Join-Path $installDir 'VideoShelf.exe'
+
+          # First install is deliberately silent and should not auto-launch.
+          $first = Start-Process -FilePath $env:VIDEOSHELF_UPDATE_INSTALLER -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $installDir + '"')
+          ) -Wait -PassThru
+          if ($first.ExitCode -ne 0) { throw "Initial install failed with exit code $($first.ExitCode)." }
+          if (!(Test-Path $mainExe)) { throw 'Initial install did not create VideoShelf.exe.' }
+
+          $selfTest = Start-Process -FilePath $mainExe -ArgumentList '--self-test' -WorkingDirectory $installDir -Wait -PassThru
+          if ($selfTest.ExitCode -ne 0) { throw 'Installed VideoShelf self-test failed before upgrade.' }
+
+          $unexpected = @(Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
+            try { $_.Path -eq $mainExe } catch { $false }
+          })
+          if ($unexpected.Count -gt 0) {
+            $unexpected | Stop-Process -Force -ErrorAction SilentlyContinue
+            throw 'A clean silent install unexpectedly launched VideoShelf.'
+          }
+
+          # This exactly matches the legacy v1.7.1 updater's installer arguments.
+          $upgrade = Start-Process -FilePath $env:VIDEOSHELF_UPDATE_INSTALLER -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS'
+          ) -Wait -PassThru
+          if ($upgrade.ExitCode -ne 0) { throw "Silent upgrade failed with exit code $($upgrade.ExitCode)." }
+
+          $launched = $null
+          $deadline = [DateTime]::UtcNow.AddSeconds(20)
+          while ([DateTime]::UtcNow -lt $deadline -and $null -eq $launched) {
+            $launched = Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
+              try { $_.Path -eq $mainExe } catch { $false }
+            } | Select-Object -First 1
+            if ($null -eq $launched) { Start-Sleep -Milliseconds 500 }
+          }
+          if ($null -eq $launched) { throw 'Silent upgrade completed but VideoShelf did not relaunch.' }
+          Write-Host "Silent upgrade relaunched VideoShelf successfully (PID $($launched.Id))."
+          Stop-Process -Id $launched.Id -Force -ErrorAction SilentlyContinue
+
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not found after upgrade.' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Uninstall after update regression test failed.' }
