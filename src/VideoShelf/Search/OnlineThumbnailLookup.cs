@@ -95,7 +95,7 @@ static class OnlineThumbnailLookup {
  public static string SearchText(string title){return PrimaryQuery(Identify(title));}
 
  public static string CacheKey(string title){
-  string key=Identify(title).CacheIdentity;
+  string key="v2|"+Identify(title).CacheIdentity;
   using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
  }
 
@@ -168,7 +168,7 @@ static class OnlineThumbnailLookup {
   if(html.IndexOf("anomaly.js",StringComparison.OrdinalIgnoreCase)>=0||html.IndexOf("challenge-form",StringComparison.OrdinalIgnoreCase)>=0)throw new LookupBlockedException("DuckDuckGo needs a browser check before more thumbnails can be fetched.");
   Match token=Regex.Match(html,"vqd=['\"](?<token>[0-9-]+)['\"]");
   if(!token.Success)throw new InvalidDataException("DuckDuckGo did not provide image search data.");
-  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=1&kp=-2";
+  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=-2&kp=-2";
   string json=Encoding.UTF8.GetString(await Get(endpoint,2*1024*1024,ct).ConfigureAwait(false));
   var payload=new JavaScriptSerializer{MaxJsonLength=2*1024*1024}.Deserialize<Dictionary<string,object>>(json);
   object rows;if(payload==null||!payload.TryGetValue("results",out rows))return new List<Dictionary<string,object>>();
@@ -186,7 +186,7 @@ static class OnlineThumbnailLookup {
   List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);
   var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
   foreach(var candidate in ranked){
-   ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"thumbnail");if(image.Length==0)image=Value(candidate.Row,"image");if(image.Length==0)continue;
+   ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"image");if(image.Length==0)image=Value(candidate.Row,"thumbnail");if(image.Length==0)continue;
    try{
     Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));
     string source=Value(candidate.Row,"url");try{Store(title,framed,source);}catch{}

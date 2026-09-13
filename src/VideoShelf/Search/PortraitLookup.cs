@@ -52,7 +52,7 @@ static class PortraitLookup {
   if(html.IndexOf("anomaly.js",StringComparison.OrdinalIgnoreCase)>=0||html.IndexOf("challenge-form",StringComparison.OrdinalIgnoreCase)>=0)throw new LookupBlockedException("DuckDuckGo needs a browser check. Use Search images from the card menu.");
   Match token=Regex.Match(html,"vqd=['\"](?<token>[0-9-]+)['\"]");
   if(!token.Success)throw new InvalidDataException("DuckDuckGo did not provide image search data.");
-  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=1&kp=-2";
+  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=-2&kp=-2";
   string json=Encoding.UTF8.GetString(await Get(endpoint,2*1024*1024,ct).ConfigureAwait(false));
   var payload=new JavaScriptSerializer{MaxJsonLength=2*1024*1024}.Deserialize<Dictionary<string,object>>(json);
   object rows;if(payload==null||!payload.TryGetValue("results",out rows))return null;
@@ -60,7 +60,7 @@ static class PortraitLookup {
   string[] words=MatchWords(name);int tried=0;
   foreach(object item in items){ct.ThrowIfCancellationRequested();var row=item as Dictionary<string,object>;if(row==null)continue;
    string title=Value(row,"title");if(words.Length>0&&!words.All(w=>title.IndexOf(w,StringComparison.OrdinalIgnoreCase)>=0))continue;
-   if(++tried>8)break;string image=Value(row,"thumbnail");if(image.Length==0)image=Value(row,"image");if(image.Length==0)continue;
+   if(++tried>8)break;string image=Value(row,"image");if(image.Length==0)image=Value(row,"thumbnail");if(image.Length==0)continue;
    try{var photo=Decode(await Get(image,5*1024*1024,ct).ConfigureAwait(false));return new PortraitResult{Photo=photo,Source=Value(row,"url")};}
    catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}
   }
