@@ -1,0 +1,83 @@
+using System;
+using System.Drawing;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace VideoShelf {
+sealed partial class Shelf {
+ readonly Label updateStatus=new Label();
+ readonly Button updateButton=new Button();
+ CancellationTokenSource updateCts=new CancellationTokenSource();
+ UpdateInfo availableUpdate;
+ bool updateBusy;
+
+ internal void InitializeUpdater(){
+  UpdateDisplayedVersion();
+  BuildUpdateSettings();
+  Shown+=async delegate{await CheckForUpdatesAsync(false);};
+  FormClosed+=delegate{try{updateCts.Cancel();updateCts.Dispose();}catch{}};
+ }
+
+ void UpdateDisplayedVersion(){
+  Text="VideoShelf "+AppVersion.Current;
+  foreach(Control control in Controls){UpdateVersionLabels(control);}
+ }
+ void UpdateVersionLabels(Control rootControl){
+  var label=rootControl as Label;
+  if(label!=null&&label.Text.StartsWith("VideoShelf v",StringComparison.OrdinalIgnoreCase))label.Text="VideoShelf v"+AppVersion.Display;
+  foreach(Control child in rootControl.Controls)UpdateVersionLabels(child);
+ }
+
+ void BuildUpdateSettings(){
+  var box=new Panel{Left=24,Top=312,Width=760,Height=166,BackColor=XdolfTheme.PanelRaised};
+  box.Paint+=delegate(object sender,PaintEventArgs e){using(var p=new Pen(XdolfTheme.Outline))e.Graphics.DrawRectangle(p,0,0,box.Width-1,box.Height-1);};
+  var heading=new Label{Text="Application updates",Left=20,Top=19,Width=260,Height=24,ForeColor=Color.White,Font=new Font("Segoe UI",10.5f,FontStyle.Bold)};
+  var version=new Label{Text="Installed version: v"+AppVersion.Current,Left=20,Top=48,Width=330,Height=22,ForeColor=XdolfTheme.Muted};
+  updateStatus.SetBounds(20,76,710,30);updateStatus.ForeColor=XdolfTheme.Muted;updateStatus.Text="Stable updates are delivered through GitHub Releases.";
+  Style(updateButton,"Check for updates",20,113,154);updateButton.Height=36;
+  updateButton.Click+=async delegate{if(availableUpdate!=null&&!updateBusy)await InstallUpdateAsync(availableUpdate);else await CheckForUpdatesAsync(true);};
+  box.Controls.AddRange(new Control[]{heading,version,updateStatus,updateButton});
+  settingsView.Controls.Add(box);
+ }
+
+ async Task CheckForUpdatesAsync(bool interactive){
+  if(updateBusy)return;
+  updateBusy=true;availableUpdate=null;updateButton.Enabled=false;updateButton.Text="Checking...";updateStatus.Text="Checking the latest stable release...";
+  try{
+   var info=await UpdateService.CheckForUpdateAsync(updateCts.Token);
+   if(IsDisposed)return;
+   if(info==null){updateStatus.Text="You're up to date — v"+AppVersion.Current;updateButton.Text="Check for updates";if(interactive)MessageBox.Show(this,"VideoShelf v"+AppVersion.Current+" is the latest stable release.","VideoShelf updates",MessageBoxButtons.OK,MessageBoxIcon.Information);}
+   else{
+    availableUpdate=info;updateStatus.Text="VideoShelf v"+info.VersionText+" is available.";updateButton.Text="Install update";
+    if(interactive||Visible)PromptUpdate(info);
+   }
+  }catch(OperationCanceledException){}
+  catch(Exception ex){if(!IsDisposed){updateStatus.Text="Update check unavailable. You can try again later.";updateButton.Text="Check for updates";if(interactive)MessageBox.Show(this,"VideoShelf could not check for updates.\n\n"+ex.Message,"VideoShelf updates",MessageBoxButtons.OK,MessageBoxIcon.Information);}}
+  finally{if(!IsDisposed){updateBusy=false;updateButton.Enabled=true;}}
+ }
+
+ void PromptUpdate(UpdateInfo info){
+  if(info==null||updateBusy)return;
+  string notes=string.IsNullOrWhiteSpace(info.Notes)?"No release notes were provided.":info.Notes.Trim();
+  if(notes.Length>1200)notes=notes.Substring(0,1200).TrimEnd()+"…";
+  string message="VideoShelf v"+info.VersionText+" is available.\n\n"+notes+"\n\nDownload, verify and install this update now?";
+  if(MessageBox.Show(this,message,"VideoShelf update available",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)_=InstallUpdateAsync(info);
+ }
+
+ async Task InstallUpdateAsync(UpdateInfo info){
+  if(info==null||updateBusy)return;
+  updateBusy=true;updateButton.Enabled=false;updateButton.Text="Downloading...";
+  try{
+   var progress=new Progress<int>(pct=>{if(!IsDisposed){updateStatus.Text="Downloading VideoShelf v"+info.VersionText+" — "+pct+"%";}});
+   string installer=await UpdateService.DownloadInstallerAsync(info,progress,updateCts.Token);
+   if(IsDisposed)return;
+   updateStatus.Text="Verified. Installing VideoShelf v"+info.VersionText+"...";
+   UpdateService.LaunchInstallerAndRestart(installer);
+   Application.Exit();
+  }catch(OperationCanceledException){}
+  catch(Exception ex){if(!IsDisposed){updateStatus.Text="The update was not installed.";MessageBox.Show(this,"VideoShelf could not install the update. The current installation has not been changed.\n\n"+ex.Message,"VideoShelf updates",MessageBoxButtons.OK,MessageBoxIcon.Error);}}
+  finally{if(!IsDisposed){updateBusy=false;updateButton.Enabled=true;updateButton.Text=availableUpdate==null?"Check for updates":"Install update";}}
+ }
+}
+}
