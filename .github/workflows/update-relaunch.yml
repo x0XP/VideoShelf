@@ -90,9 +90,12 @@ jobs:
           }
 
           # This exactly matches the legacy v1.7.1 updater's installer arguments.
+          # Process.WaitForExit waits only for Setup itself; Start-Process -Wait would also
+          # wait for VideoShelf, which is the child process this regression is proving stays open.
           $upgrade = Start-Process -FilePath $env:VIDEOSHELF_UPDATE_INSTALLER -ArgumentList @(
             '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS'
-          ) -Wait -PassThru
+          ) -PassThru
+          $upgrade.WaitForExit()
           if ($upgrade.ExitCode -ne 0) { throw "Silent upgrade failed with exit code $($upgrade.ExitCode)." }
 
           $launched = $null
