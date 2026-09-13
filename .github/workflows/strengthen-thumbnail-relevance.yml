@@ -1,0 +1,108 @@
+name: Strengthen thumbnail relevance
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/strengthen-thumbnail-relevance.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Harden DuckDuckGo thumbnail matching
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/VideoShelf/Search/OnlineThumbnailLookup.cs')
+          text = path.read_text(encoding='utf-8')
+
+          old_queries = ''' static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series;}
+ static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image";}'''
+          new_queries = ''' static string QuotedSeries(string value){string s=(value??"").Replace("\\\""," ").Trim();return s.Length==0?s:"\\\""+s+"\\\"";}
+ static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" screenshot":QuotedSeries(id.Series);}
+ static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" still":QuotedSeries(id.Series)+" image";}'''
+          if old_queries not in text:
+              raise SystemExit('query builder block not found')
+          text = text.replace(old_queries, new_queries)
+
+          if 'string key="v2|"+Identify(title).CacheIdentity;' not in text:
+              raise SystemExit('v2 cache identity not found')
+          text = text.replace('string key="v2|"+Identify(title).CacheIdentity;', 'string key="v3|"+Identify(title).CacheIdentity;')
+
+          start = text.index(' static bool ContainsEpisodeReference(')
+          end = text.index('\n static async Task<List<Dictionary<string,object>>> SearchRows', start)
+          relevance = r''' static bool ContainsEpisodeReference(string text,ThumbnailIdentity id){
+  if(!id.Episodic)return true;
+  string lower=(text??"").ToLowerInvariant();
+  if(id.Season>=0){
+   string compact="s"+id.Season.ToString("00")+"e"+id.Episode.ToString("00");
+   if(lower.Contains(compact))return true;
+   if(Regex.IsMatch(lower,@"\bseason\s*0*"+id.Season+@"\D{0,12}episode\s*0*"+id.Episode+@"\b",RegexOptions.IgnoreCase))return true;
+  }
+  return Regex.IsMatch(lower,@"\b(?:episode|ep)\s*[#:_\-. ]*0*"+id.Episode+@"\b",RegexOptions.IgnoreCase) || Regex.IsMatch(lower,@"(?:^|[/_\-. ])0*"+id.Episode+@"(?:[/_\-. ]|$)",RegexOptions.IgnoreCase);
+ }
+ static bool HasConflictingEpisodeReference(string text,ThumbnailIdentity id){
+  if(!id.Episodic)return false;
+  foreach(Match m in Regex.Matches(text??"",@"\bS(?<s>\d{1,2})E(?<e>\d{1,3})\b",RegexOptions.IgnoreCase)){
+   int s,e;if(int.TryParse(m.Groups["s"].Value,out s)&&int.TryParse(m.Groups["e"].Value,out e)&&(e!=id.Episode||(id.Season>=0&&s!=id.Season)))return true;
+  }
+  foreach(Match m in Regex.Matches(text??"",@"\b(?:episode|ep)\s*[#:_\-. ]*0*(?<e>\d{1,4})\b",RegexOptions.IgnoreCase)){
+   int e;if(int.TryParse(m.Groups["e"].Value,out e)&&e!=id.Episode)return true;
+  }
+  return false;
+ }
+ static int MatchedWordCount(string[] words,string normalized){int count=0;foreach(string word in words)if(Regex.IsMatch(normalized,@"(?:^| )"+Regex.Escape(word)+@"(?: |$)",RegexOptions.IgnoreCase))count++;return count;}
+ static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id){
+  string title=Value(row,"title"),url=Value(row,"url"),image=Value(row,"image");
+  string evidence=title+" "+url;
+  string normalizedTitle=NormalizedWords(title),normalizedUrl=NormalizedWords(url),seriesPhrase=NormalizedWords(id.Series);
+  string[] words=SignificantWords(id.Series);
+  int titleMatched=MatchedWordCount(words,normalizedTitle),urlMatched=MatchedWordCount(words,normalizedUrl),matched=Math.Max(titleMatched,urlMatched);
+  bool exact=seriesPhrase.Length>0&&(normalizedTitle.Contains(seriesPhrase)||normalizedUrl.Contains(seriesPhrase));
+  int minimum=words.Length<=3?words.Length:Math.Max(3,(int)Math.Ceiling(words.Length*0.70));
+  if(!exact&&matched<minimum)return int.MinValue;
+  if(id.Episodic&&!ContainsEpisodeReference(evidence,id))return int.MinValue;
+  if(id.Episodic&&HasConflictingEpisodeReference(evidence,id))return int.MinValue;
+  int score=matched*6;
+  if(exact)score+=25;
+  if(id.Episodic)score+=30;
+  if(Regex.IsMatch(evidence,@"\b(screenshot|screencap|screen\s*cap|still|gallery|recap|review|scene|frame)\b",RegexOptions.IgnoreCase))score+=10;
+  if(Regex.IsMatch(evidence,@"\b(poster|wallpaper|key\s*visual|promotional|promo|cover|box\s*art|fanart|fan\s*art)\b",RegexOptions.IgnoreCase))score-=20;
+  if(id.Episodic&&score<60)return int.MinValue;
+  if(!id.Episodic&&score<20)return int.MinValue;
+  return score;
+ }
+'''
+          text = text[:start] + relevance + text[end:]
+
+          marker = '  if(tv.IndexOf("season 2 episode 7",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("TV episode thumbnail query lost its season/episode identity.");'
+          addition = marker + r'''
+  var id=Identify(anime);
+  var correct=new Dictionary<string,object>{{"title","Re Zero kara Hajimeru Isekai Seikatsu episode 82 screenshot"},{"url","https://example.test/re-zero-kara-hajimeru-isekai-seikatsu/episode-82"},{"image","https://example.test/82.jpg"}};
+  if(CandidateScore(correct,id)==int.MinValue)throw new InvalidOperationException("Strong episode-specific thumbnail candidate was rejected.");
+  var weak=new Dictionary<string,object>{{"title","Re Zero episode 82 screenshot"},{"url","https://example.test/random/episode-82"},{"image","https://example.test/82.jpg"}};
+  if(CandidateScore(weak,id)!=int.MinValue)throw new InvalidOperationException("Weak unrelated thumbnail candidate was accepted.");
+  var wrongEpisode=new Dictionary<string,object>{{"title","Re Zero kara Hajimeru Isekai Seikatsu episode 83 screenshot"},{"url","https://example.test/re-zero/episode-83"},{"image","https://example.test/83.jpg"}};
+  if(CandidateScore(wrongEpisode,id)!=int.MinValue)throw new InvalidOperationException("Wrong-episode thumbnail candidate was accepted.");'''
+          if marker not in text:
+              raise SystemExit('self-test marker not found')
+          text = text.replace(marker, addition)
+
+          path.write_text(text, encoding='utf-8', newline='\n')
+      - name: Commit source change
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/VideoShelf/Search/OnlineThumbnailLookup.cs
+          git diff --cached --exit-code && { echo 'No source changes produced'; exit 1; }
+          git commit -m 'Reject weak and unrelated episode thumbnails'
+          git push
