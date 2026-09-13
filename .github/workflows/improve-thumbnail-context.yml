@@ -21,163 +21,39 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          p = Path('src/VideoShelf/Search/OnlineThumbnailLookup.cs')
-          s = p.read_text(encoding='utf-8')
-
-          old = ''' static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series;}
- static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image";}
- public static string SearchText(string title){return PrimaryQuery(Identify(title));}
-
- public static string CacheKey(string title){
-  string key="v2|"+Identify(title).CacheIdentity;
-  using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
- }
-
- static string FileFor(string title){return Path.Combine(cache,CacheKey(title)+".jpg");}
- static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
- public static string SearchUrl(string title){return SearchUrlFor(SearchText(title));}
-'''
-          new = ''' static string CleanContext(string context){string s=Regex.Replace((context??"").Trim(),@"\\s+"," ");return s.Length>120?s.Substring(0,120).Trim():s;}
- static string ContextPrefix(string context){string s=CleanContext(context).Replace("\\\""," ").Trim();return s.Length==0?"":"\\\""+s+"\\\" ";}
- static bool ContextAlreadyPresent(ThumbnailIdentity id,string context){string c=NormalizedWords(CleanContext(context)),series=NormalizedWords(id.Series);return c.Length>0&&series.Contains(c);}
- static string PrimaryQuery(ThumbnailIdentity id,string context){string prefix=ContextAlreadyPresent(id,context)?"":ContextPrefix(context);return prefix+(id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series);}
- static string SecondaryQuery(ThumbnailIdentity id,string context){string prefix=ContextAlreadyPresent(id,context)?"":ContextPrefix(context);return prefix+(id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image");}
- static string PrimaryQuery(ThumbnailIdentity id){return PrimaryQuery(id,"");}
- static string SecondaryQuery(ThumbnailIdentity id){return SecondaryQuery(id,"");}
- public static string SearchText(string title){return PrimaryQuery(Identify(title));}
- public static string SearchText(string title,string context){return PrimaryQuery(Identify(title),context);}
-
- public static string CacheKey(string title){return CacheKey(title,"");}
- public static string CacheKey(string title,string context){
-  string key="v4|"+NormalizedWords(CleanContext(context))+"|"+Identify(title).CacheIdentity;
-  using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
- }
-
- static string FileFor(string title,string context){return Path.Combine(cache,CacheKey(title,context)+".jpg");}
- static string ForceSafeOff(string query){string q=(query??"").Trim();return q.IndexOf("!safeoff",StringComparison.OrdinalIgnoreCase)>=0?q:q+" !safeoff";}
- static string SearchUrlFor(string query){query=ForceSafeOff(query);return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
- public static string SearchUrl(string title){return SearchUrlFor(SearchText(title));}
- public static string SearchUrl(string title,string context){return SearchUrlFor(SearchText(title,context));}
-'''
-          if old not in s:
-              raise SystemExit('query/cache block not found')
-          s = s.replace(old, new)
-
-          old = ''' static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id){
-  string title=Value(row,"title"),url=Value(row,"url"),image=Value(row,"image");
-  string combined=title+" "+url+" "+image;
-  string normalized=NormalizedWords(combined);
-  string[] words=SignificantWords(id.Series);int matched=0;
-  foreach(string word in words)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)matched++;
-  int minimum=words.Length<=1?words.Length:Math.Min(2,words.Length);
-  if(matched<minimum)return int.MinValue;
-  if(id.Episodic&&!ContainsEpisodeReference(combined,id))return int.MinValue;
-  int score=matched*5;
-'''
-          new = ''' static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id,string context){
-  string title=Value(row,"title"),url=Value(row,"url"),image=Value(row,"image");
-  string combined=title+" "+url+" "+image;
-  string normalized=NormalizedWords(combined);
-  string[] words=SignificantWords(id.Series);int matched=0;
-  foreach(string word in words)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)matched++;
-  int minimum=words.Length<=1?words.Length:Math.Min(2,words.Length);
-  if(matched<minimum)return int.MinValue;
-  if(id.Episodic&&!ContainsEpisodeReference(combined,id))return int.MinValue;
-  int score=matched*5;
-  string cleanContext=CleanContext(context),contextPhrase=NormalizedWords(cleanContext);
-  if(contextPhrase.Length>0){
-   string[] contextWords=SignificantWords(cleanContext);int contextMatched=0;
-   foreach(string word in contextWords)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)contextMatched++;
-   score+=contextMatched*12;if(normalized.Contains(contextPhrase))score+=24;
-  }
-'''
-          if old not in s:
-              raise SystemExit('candidate score block not found')
-          s = s.replace(old, new)
-
-          old = ''' static async Task<List<Dictionary<string,object>>> SearchRows(string query,CancellationToken ct){
-  string html=Encoding.UTF8.GetString(await Get(SearchUrlFor(query),2*1024*1024,ct).ConfigureAwait(false));
-'''
-          new = ''' static async Task<List<Dictionary<string,object>>> SearchRows(string query,CancellationToken ct){
-  string effectiveQuery=ForceSafeOff(query);
-  string html=Encoding.UTF8.GetString(await Get(SearchUrlFor(effectiveQuery),2*1024*1024,ct).ConfigureAwait(false));
-'''
-          if old not in s:
-              raise SystemExit('search rows block not found')
-          s = s.replace(old, new)
-          s = s.replace('Uri.EscapeDataString(query)+"&vqd="', 'Uri.EscapeDataString(effectiveQuery)+"&vqd="', 1)
-
-          old = ''' static void Store(string title,Image image,string source){
-  Directory.CreateDirectory(cache);string f=FileFor(title),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
-'''
-          new = ''' static void Store(string title,string context,Image image,string source){
-  Directory.CreateDirectory(cache);string f=FileFor(title,context),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
-'''
-          if old not in s:
-              raise SystemExit('store block not found')
-          s = s.replace(old, new)
-
-          old = ''' static async Task<OnlineThumbnailResult> FindFromQuery(string title,ThumbnailIdentity id,string query,CancellationToken ct){
-  List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);
-  var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
-'''
-          new = ''' static async Task<OnlineThumbnailResult> FindFromQuery(string title,string context,ThumbnailIdentity id,string query,CancellationToken ct){
-  List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);
-  var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id,context)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
-'''
-          if old not in s:
-              raise SystemExit('find query block not found')
-          s = s.replace(old, new)
-          s = s.replace('try{Store(title,framed,source);}catch{}', 'try{Store(title,context,framed,source);}catch{}', 1)
-
-          old = ''' public static async Task<OnlineThumbnailResult> Find(string title,CancellationToken ct){
-  await gate.WaitAsync(ct).ConfigureAwait(false);
-  try{
-   ct.ThrowIfCancellationRequested();string f=FileFor(title);
-'''
-          new = ''' public static Task<OnlineThumbnailResult> Find(string title,CancellationToken ct){return Find(title,"",ct);}
- public static async Task<OnlineThumbnailResult> Find(string title,string context,CancellationToken ct){
-  await gate.WaitAsync(ct).ConfigureAwait(false);
-  try{
-   context=CleanContext(context);ct.ThrowIfCancellationRequested();string f=FileFor(title,context);
-'''
-          if old not in s:
-              raise SystemExit('find entry block not found')
-          s = s.replace(old, new)
-          s = s.replace('FindFromQuery(title,id,PrimaryQuery(id),ct)', 'FindFromQuery(title,context,id,PrimaryQuery(id,context),ct)')
-          s = s.replace('FindFromQuery(title,id,SecondaryQuery(id),ct)', 'FindFromQuery(title,context,id,SecondaryQuery(id,context),ct)')
-
-          marker = '''  string tv=SearchText("Example.Show.S02E07.1080p.WEB-DL.x265.mkv");
-  if(tv.IndexOf("season 2 episode 7",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("TV episode thumbnail query lost its season/episode identity.");
-'''
-          add = marker + '''  string contextual=SearchText("Sample.Release.1080p.mkv","Sample Subject");
-  if(contextual.IndexOf("Sample Subject",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("Search context was not preserved for thumbnail lookup.");
-  if(CacheKey("Sample.Release.1080p.mkv","Sample Subject")==CacheKey("Sample.Release.1080p.mkv","Different Subject"))throw new InvalidOperationException("Contextual thumbnail cache keys collided.");
-  if(ForceSafeOff("sample query").IndexOf("!safeoff",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("Safe Search override token is missing.");
-'''
-          if marker not in s:
-              raise SystemExit('self-test marker not found')
-          s = s.replace(marker, add)
-          p.write_text(s, encoding='utf-8')
-
-          p = Path('src/VideoShelf/UI/Shelf/Shelf.Online.cs')
-          s = p.read_text(encoding='utf-8')
-          old = ''' async void StartThumbnailLoading(IEnumerable<OnlineResult> displayed){
-  if(thumbnailsLoading||thumbnailsPaused||onlineSearching||section!=ShellSection.Search||IsDisposed)return;var pending=displayed.Where(r=>r.Seeders>0).GroupBy(r=>OnlineThumbnailLookup.CacheKey(r.Title),StringComparer.OrdinalIgnoreCase).Select(g=>g.First()).Where(r=>!thumbnailAttempted.Contains(OnlineThumbnailLookup.CacheKey(r.Title))).Take(40).ToArray();if(pending.Length==0)return;
-'''
-          new = ''' async void StartThumbnailLoading(IEnumerable<OnlineResult> displayed){
-  if(thumbnailsLoading||thumbnailsPaused||onlineSearching||section!=ShellSection.Search||IsDisposed)return;string thumbnailContext=onlineQueryFor;var pending=displayed.Where(r=>r.Seeders>0).GroupBy(r=>OnlineThumbnailLookup.CacheKey(r.Title,thumbnailContext),StringComparer.OrdinalIgnoreCase).Select(g=>g.First()).Where(r=>!thumbnailAttempted.Contains(OnlineThumbnailLookup.CacheKey(r.Title,thumbnailContext))).Take(40).ToArray();if(pending.Length==0)return;
-'''
-          if old not in s:
-              raise SystemExit('thumbnail loader header not found')
-          s = s.replace(old, new)
-          s = s.replace('OnlineThumbnailLookup.CacheKey(row.Title)', 'OnlineThumbnailLookup.CacheKey(row.Title,thumbnailContext)')
-          s = s.replace('OnlineThumbnailLookup.Find(row.Title,ct)', 'OnlineThumbnailLookup.Find(row.Title,thumbnailContext,ct)')
-          s = s.replace('OnlineThumbnailLookup.CacheKey(x.Title)==key', 'OnlineThumbnailLookup.CacheKey(x.Title,thumbnailContext)==key')
-          s = s.replace('OnlineThumbnailLookup.CacheKey(c.Result.Title)==key', 'OnlineThumbnailLookup.CacheKey(c.Result.Title,thumbnailContext)==key')
-          s = s.replace('OnlineThumbnailLookup.CacheKey(selectedOnline.Title)==key', 'OnlineThumbnailLookup.CacheKey(selectedOnline.Title,thumbnailContext)==key')
-          p.write_text(s, encoding='utf-8')
+          import base64
+          d=lambda x: base64.b64decode(x).decode('utf-8')
+          p=Path('src/VideoShelf/Search/OnlineThumbnailLookup.cs')
+          s=p.read_text(encoding='utf-8')
+          reps=[
+          ('IHN0YXRpYyBzdHJpbmcgUHJpbWFyeVF1ZXJ5KFRodW1ibmFpbElkZW50aXR5IGlkKXtyZXR1cm4gaWQuRXBpc29kaWM/aWQuU2VyaWVzKyIgIitpZC5FcGlzb2RlTGFiZWwrIiBzY3JlZW5zaG90IjppZC5TZXJpZXM7fQogc3RhdGljIHN0cmluZyBTZWNvbmRhcnlRdWVyeShUaHVtYm5haWxJZGVudGl0eSBpZCl7cmV0dXJuIGlkLkVwaXNvZGljP2lkLlNlcmllcysiICIraWQuRXBpc29kZUxhYmVsKyIgc3RpbGwiOmlkLlNlcmllcysiIGltYWdlIjt9CiBwdWJsaWMgc3RhdGljIHN0cmluZyBTZWFyY2hUZXh0KHN0cmluZyB0aXRsZSl7cmV0dXJuIFByaW1hcnlRdWVyeShJZGVudGlmeSh0aXRsZSkpO30KCiBwdWJsaWMgc3RhdGljIHN0cmluZyBDYWNoZUtleShzdHJpbmcgdGl0bGUpewogIHN0cmluZyBrZXk9InYyfCIrSWRlbnRpZnkodGl0bGUpLkNhY2hlSWRlbnRpdHk7CiAgdXNpbmcodmFyIHNoYT1TSEEyNTYuQ3JlYXRlKCkpcmV0dXJuIEJpdENvbnZlcnRlci5Ub1N0cmluZyhzaGEuQ29tcHV0ZUhhc2goRW5jb2RpbmcuVVRGOC5HZXRCeXRlcyhrZXkpKSkuUmVwbGFjZSgiLSIsIiIpOwogfQoKIHN0YXRpYyBzdHJpbmcgRmlsZUZvcihzdHJpbmcgdGl0bGUpe3JldHVybiBQYXRoLkNvbWJpbmUoY2FjaGUsQ2FjaGVLZXkodGl0bGUpKyIuanBnIik7fQogc3RhdGljIHN0cmluZyBTZWFyY2hVcmxGb3Ioc3RyaW5nIHF1ZXJ5KXtyZXR1cm4gImh0dHBzOi8vZHVja2R1Y2tnby5jb20vP3E9IitVcmkuRXNjYXBlRGF0YVN0cmluZyhxdWVyeSkrIiZpYXg9aW1hZ2VzJmlhPWltYWdlcyZrcD0tMiI7fQogcHVibGljIHN0YXRpYyBzdHJpbmcgU2VhcmNoVXJsKHN0cmluZyB0aXRsZSl7cmV0dXJuIFNlYXJjaFVybEZvcihTZWFyY2hUZXh0KHRpdGxlKSk7fQo=','IHN0YXRpYyBzdHJpbmcgQ2xlYW5Db250ZXh0KHN0cmluZyBjb250ZXh0KXtzdHJpbmcgcz1SZWdleC5SZXBsYWNlKChjb250ZXh0Pz8iIikuVHJpbSgpLEAiXHMrIiwiICIpO3JldHVybiBzLkxlbmd0aD4xMjA/cy5TdWJzdHJpbmcoMCwxMjApLlRyaW0oKTpzO30KIHN0YXRpYyBzdHJpbmcgQ29udGV4dFByZWZpeChzdHJpbmcgY29udGV4dCl7c3RyaW5nIHM9Q2xlYW5Db250ZXh0KGNvbnRleHQpLlJlcGxhY2UoIlwiIiwiICIpLlRyaW0oKTtyZXR1cm4gcy5MZW5ndGg9PTA/IiI6IlwiIitzKyJcIiAiO30KIHN0YXRpYyBib29sIENvbnRleHRBbHJlYWR5UHJlc2VudChUaHVtYm5haWxJZGVudGl0eSBpZCxzdHJpbmcgY29udGV4dCl7c3RyaW5nIGM9Tm9ybWFsaXplZFdvcmRzKENsZWFuQ29udGV4dChjb250ZXh0KSksc2VyaWVzPU5vcm1hbGl6ZWRXb3JkcyhpZC5TZXJpZXMpO3JldHVybiBjLkxlbmd0aD4wJiZzZXJpZXMuQ29udGFpbnMoYyk7fQogc3RhdGljIHN0cmluZyBQcmltYXJ5UXVlcnkoVGh1bWJuYWlsSWRlbnRpdHkgaWQsc3RyaW5nIGNvbnRleHQpe3N0cmluZyBwcmVmaXg9Q29udGV4dEFscmVhZHlQcmVzZW50KGlkLGNvbnRleHQpPyIiOkNvbnRleHRQcmVmaXgoY29udGV4dCk7cmV0dXJuIHByZWZpeCsoaWQuRXBpc29kaWM/aWQuU2VyaWVzKyIgIitpZC5FcGlzb2RlTGFiZWwrIiBzY3JlZW5zaG90IjppZC5TZXJpZXMpO30KIHN0YXRpYyBzdHJpbmcgU2Vjb25kYXJ5UXVlcnkoVGh1bWJuYWlsSWRlbnRpdHkgaWQsc3RyaW5nIGNvbnRleHQpe3N0cmluZyBwcmVmaXg9Q29udGV4dEFscmVhZHlQcmVzZW50KGlkLGNvbnRleHQpPyIiOkNvbnRleHRQcmVmaXgoY29udGV4dCk7cmV0dXJuIHByZWZpeCsoaWQuRXBpc29kaWM/aWQuU2VyaWVzKyIgIitpZC5FcGlzb2RlTGFiZWwrIiBzdGlsbCI6aWQuU2VyaWVzKyIgaW1hZ2UiKTt9CiBzdGF0aWMgc3RyaW5nIFByaW1hcnlRdWVyeShUaHVtYm5haWxJZGVudGl0eSBpZCl7cmV0dXJuIFByaW1hcnlRdWVyeShpZCwiIik7fQogc3RhdGljIHN0cmluZyBTZWNvbmRhcnlRdWVyeShUaHVtYm5haWxJZGVudGl0eSBpZCl7cmV0dXJuIFNlY29uZGFyeVF1ZXJ5KGlkLCIiKTt9CiBwdWJsaWMgc3RhdGljIHN0cmluZyBTZWFyY2hUZXh0KHN0cmluZyB0aXRsZSl7cmV0dXJuIFByaW1hcnlRdWVyeShJZGVudGlmeSh0aXRsZSkpO30KIHB1YmxpYyBzdGF0aWMgc3RyaW5nIFNlYXJjaFRleHQoc3RyaW5nIHRpdGxlLHN0cmluZyBjb250ZXh0KXtyZXR1cm4gUHJpbWFyeVF1ZXJ5KElkZW50aWZ5KHRpdGxlKSxjb250ZXh0KTt9CgogcHVibGljIHN0YXRpYyBzdHJpbmcgQ2FjaGVLZXkoc3RyaW5nIHRpdGxlKXtyZXR1cm4gQ2FjaGVLZXkodGl0bGUsIiIpO30KIHB1YmxpYyBzdGF0aWMgc3RyaW5nIENhY2hlS2V5KHN0cmluZyB0aXRsZSxzdHJpbmcgY29udGV4dCl7CiAgc3RyaW5nIGtleT0idjR8IitOb3JtYWxpemVkV29yZHMoQ2xlYW5Db250ZXh0KGNvbnRleHQpKSsifCIrSWRlbnRpZnkodGl0bGUpLkNhY2hlSWRlbnRpdHk7CiAgdXNpbmcodmFyIHNoYT1TSEEyNTYuQ3JlYXRlKCkpcmV0dXJuIEJpdENvbnZlcnRlci5Ub1N0cmluZyhzaGEuQ29tcHV0ZUhhc2goRW5jb2RpbmcuVVRGOC5HZXRCeXRlcyhrZXkpKSkuUmVwbGFjZSgiLSIsIiIpOwogfQoKIHN0YXRpYyBzdHJpbmcgRmlsZUZvcihzdHJpbmcgdGl0bGUsc3RyaW5nIGNvbnRleHQpe3JldHVybiBQYXRoLkNvbWJpbmUoY2FjaGUsQ2FjaGVLZXkodGl0bGUsY29udGV4dCkrIi5qcGciKTt9CiBzdGF0aWMgc3RyaW5nIEZvcmNlU2FmZU9mZihzdHJpbmcgcXVlcnkpe3N0cmluZyBxPShxdWVyeT8/IiIpLlRyaW0oKTtyZXR1cm4gcS5JbmRleE9mKCIhc2FmZW9mZiIsU3RyaW5nQ29tcGFyaXNvbi5PcmRpbmFsSWdub3JlQ2FzZSk+PTA/cTpxKyIgIXNhZmVvZmYiO30KIHN0YXRpYyBzdHJpbmcgU2VhcmNoVXJsRm9yKHN0cmluZyBxdWVyeSl7cXVlcnk9Rm9yY2VTYWZlT2ZmKHF1ZXJ5KTtyZXR1cm4gImh0dHBzOi8vZHVja2R1Y2tnby5jb20vP3E9IitVcmkuRXNjYXBlRGF0YVN0cmluZyhxdWVyeSkrIiZpYXg9aW1hZ2VzJmlhPWltYWdlcyZrcD0tMiI7fQogcHVibGljIHN0YXRpYyBzdHJpbmcgU2VhcmNoVXJsKHN0cmluZyB0aXRsZSl7cmV0dXJuIFNlYXJjaFVybEZvcihTZWFyY2hUZXh0KHRpdGxlKSk7fQogcHVibGljIHN0YXRpYyBzdHJpbmcgU2VhcmNoVXJsKHN0cmluZyB0aXRsZSxzdHJpbmcgY29udGV4dCl7cmV0dXJuIFNlYXJjaFVybEZvcihTZWFyY2hUZXh0KHRpdGxlLGNvbnRleHQpKTt9Cg=='),
+          ('IHN0YXRpYyBpbnQgQ2FuZGlkYXRlU2NvcmUoRGljdGlvbmFyeTxzdHJpbmcsb2JqZWN0PiByb3csVGh1bWJuYWlsSWRlbnRpdHkgaWQpewogIHN0cmluZyB0aXRsZT1WYWx1ZShyb3csInRpdGxlIiksdXJsPVZhbHVlKHJvdywidXJsIiksaW1hZ2U9VmFsdWUocm93LCJpbWFnZSIpOwogIHN0cmluZyBjb21iaW5lZD10aXRsZSsiICIrdXJsKyIgIitpbWFnZTsKICBzdHJpbmcgbm9ybWFsaXplZD1Ob3JtYWxpemVkV29yZHMoY29tYmluZWQpOwogIHN0cmluZ1tdIHdvcmRzPVNpZ25pZmljYW50V29yZHMoaWQuU2VyaWVzKTtpbnQgbWF0Y2hlZD0wOwogIGZvcmVhY2goc3RyaW5nIHdvcmQgaW4gd29yZHMpaWYobm9ybWFsaXplZC5JbmRleE9mKHdvcmQsU3RyaW5nQ29tcGFyaXNvbi5PcmRpbmFsSWdub3JlQ2FzZSk+PTApbWF0Y2hlZCsrOwogIGludCBtaW5pbXVtPXdvcmRzLkxlbmd0aDw9MT93b3Jkcy5MZW5ndGg6TWF0aC5NaW4oMix3b3Jkcy5MZW5ndGgpOwogIGlmKG1hdGNoZWQ8bWluaW11bSlyZXR1cm4gaW50Lk1pblZhbHVlOwogIGlmKGlkLkVwaXNvZGljJiYhQ29udGFpbnNFcGlzb2RlUmVmZXJlbmNlKGNvbWJpbmVkLGlkKSlyZXR1cm4gaW50Lk1pblZhbHVlOwogIGludCBzY29yZT1tYXRjaGVkKjU7Cg==','IHN0YXRpYyBpbnQgQ2FuZGlkYXRlU2NvcmUoRGljdGlvbmFyeTxzdHJpbmcsb2JqZWN0PiByb3csVGh1bWJuYWlsSWRlbnRpdHkgaWQsc3RyaW5nIGNvbnRleHQpewogIHN0cmluZyB0aXRsZT1WYWx1ZShyb3csInRpdGxlIiksdXJsPVZhbHVlKHJvdywidXJsIiksaW1hZ2U9VmFsdWUocm93LCJpbWFnZSIpOwogIHN0cmluZyBjb21iaW5lZD10aXRsZSsiICIrdXJsKyIgIitpbWFnZTsKICBzdHJpbmcgbm9ybWFsaXplZD1Ob3JtYWxpemVkV29yZHMoY29tYmluZWQpOwogIHN0cmluZ1tdIHdvcmRzPVNpZ25pZmljYW50V29yZHMoaWQuU2VyaWVzKTtpbnQgbWF0Y2hlZD0wOwogIGZvcmVhY2goc3RyaW5nIHdvcmQgaW4gd29yZHMpaWYobm9ybWFsaXplZC5JbmRleE9mKHdvcmQsU3RyaW5nQ29tcGFyaXNvbi5PcmRpbmFsSWdub3JlQ2FzZSk+PTApbWF0Y2hlZCsrOwogIGludCBtaW5pbXVtPXdvcmRzLkxlbmd0aDw9MT93b3Jkcy5MZW5ndGg6TWF0aC5NaW4oMix3b3Jkcy5MZW5ndGgpOwogIGlmKG1hdGNoZWQ8bWluaW11bSlyZXR1cm4gaW50Lk1pblZhbHVlOwogIGlmKGlkLkVwaXNvZGljJiYhQ29udGFpbnNFcGlzb2RlUmVmZXJlbmNlKGNvbWJpbmVkLGlkKSlyZXR1cm4gaW50Lk1pblZhbHVlOwogIGludCBzY29yZT1tYXRjaGVkKjU7CiAgc3RyaW5nIGNsZWFuQ29udGV4dD1DbGVhbkNvbnRleHQoY29udGV4dCksY29udGV4dFBocmFzZT1Ob3JtYWxpemVkV29yZHMoY2xlYW5Db250ZXh0KTsKICBpZihjb250ZXh0UGhyYXNlLkxlbmd0aD4wKXsKICAgc3RyaW5nW10gY29udGV4dFdvcmRzPVNpZ25pZmljYW50V29yZHMoY2xlYW5Db250ZXh0KTtpbnQgY29udGV4dE1hdGNoZWQ9MDsKICAgZm9yZWFjaChzdHJpbmcgd29yZCBpbiBjb250ZXh0V29yZHMpaWYobm9ybWFsaXplZC5JbmRleE9mKHdvcmQsU3RyaW5nQ29tcGFyaXNvbi5PcmRpbmFsSWdub3JlQ2FzZSk+PTApY29udGV4dE1hdGNoZWQrKzsKICAgc2NvcmUrPWNvbnRleHRNYXRjaGVkKjEyO2lmKG5vcm1hbGl6ZWQuQ29udGFpbnMoY29udGV4dFBocmFzZSkpc2NvcmUrPTI0OwogIH0K'),
+          ('IHN0YXRpYyBhc3luYyBUYXNrPExpc3Q8RGljdGlvbmFyeTxzdHJpbmcsb2JqZWN0Pj4+IFNlYXJjaFJvd3Moc3RyaW5nIHF1ZXJ5LENhbmNlbGxhdGlvblRva2VuIGN0KXsKICBzdHJpbmcgaHRtbD1FbmNvZGluZy5VVEY4LkdldFN0cmluZyhhd2FpdCBHZXQoU2VhcmNoVXJsRm9yKHF1ZXJ5KSwyKjEwMjQqMTAyNCxjdCkuQ29uZmlndXJlQXdhaXQoZmFsc2UpKTsK','IHN0YXRpYyBhc3luYyBUYXNrPExpc3Q8RGljdGlvbmFyeTxzdHJpbmcsb2JqZWN0Pj4+IFNlYXJjaFJvd3Moc3RyaW5nIHF1ZXJ5LENhbmNlbGxhdGlvblRva2VuIGN0KXsKICBzdHJpbmcgZWZmZWN0aXZlUXVlcnk9Rm9yY2VTYWZlT2ZmKHF1ZXJ5KTsKICBzdHJpbmcgaHRtbD1FbmNvZGluZy5VVEY4LkdldFN0cmluZyhhd2FpdCBHZXQoU2VhcmNoVXJsRm9yKGVmZmVjdGl2ZVF1ZXJ5KSwyKjEwMjQqMTAyNCxjdCkuQ29uZmlndXJlQXdhaXQoZmFsc2UpKTsK'),
+          ('IHN0YXRpYyB2b2lkIFN0b3JlKHN0cmluZyB0aXRsZSxJbWFnZSBpbWFnZSxzdHJpbmcgc291cmNlKXsKICBEaXJlY3RvcnkuQ3JlYXRlRGlyZWN0b3J5KGNhY2hlKTtzdHJpbmcgZj1GaWxlRm9yKHRpdGxlKSx0ZW1wPWYrIi4iK0d1aWQuTmV3R3VpZCgpLlRvU3RyaW5nKCJOIikrIi50bXAiOwo=','IHN0YXRpYyB2b2lkIFN0b3JlKHN0cmluZyB0aXRsZSxzdHJpbmcgY29udGV4dCxJbWFnZSBpbWFnZSxzdHJpbmcgc291cmNlKXsKICBEaXJlY3RvcnkuQ3JlYXRlRGlyZWN0b3J5KGNhY2hlKTtzdHJpbmcgZj1GaWxlRm9yKHRpdGxlLGNvbnRleHQpLHRlbXA9ZisiLiIrR3VpZC5OZXdHdWlkKCkuVG9TdHJpbmcoIk4iKSsiLnRtcCI7Cg=='),
+          ('IHN0YXRpYyBhc3luYyBUYXNrPE9ubGluZVRodW1ibmFpbFJlc3VsdD4gRmluZEZyb21RdWVyeShzdHJpbmcgdGl0bGUsVGh1bWJuYWlsSWRlbnRpdHkgaWQsc3RyaW5nIHF1ZXJ5LENhbmNlbGxhdGlvblRva2VuIGN0KXsKICBMaXN0PERpY3Rpb25hcnk8c3RyaW5nLG9iamVjdD4+IHJvd3M9YXdhaXQgU2VhcmNoUm93cyhxdWVyeSxjdCkuQ29uZmlndXJlQXdhaXQoZmFsc2UpOwogIHZhciByYW5rZWQ9cm93cy5TZWxlY3Qocm93PT5uZXcgVGh1bWJuYWlsQ2FuZGlkYXRle1Jvdz1yb3csU2NvcmU9Q2FuZGlkYXRlU2NvcmUocm93LGlkKX0pLldoZXJlKHg9PnguU2NvcmU+aW50Lk1pblZhbHVlKS5PcmRlckJ5RGVzY2VuZGluZyh4PT54LlNjb3JlKS5UYWtlKDEwKS5Ub0FycmF5KCk7Cg==','IHN0YXRpYyBhc3luYyBUYXNrPE9ubGluZVRodW1ibmFpbFJlc3VsdD4gRmluZEZyb21RdWVyeShzdHJpbmcgdGl0bGUsc3RyaW5nIGNvbnRleHQsVGh1bWJuYWlsSWRlbnRpdHkgaWQsc3RyaW5nIHF1ZXJ5LENhbmNlbGxhdGlvblRva2VuIGN0KXsKICBMaXN0PERpY3Rpb25hcnk8c3RyaW5nLG9iamVjdD4+IHJvd3M9YXdhaXQgU2VhcmNoUm93cyhxdWVyeSxjdCkuQ29uZmlndXJlQXdhaXQoZmFsc2UpOwogIHZhciByYW5rZWQ9cm93cy5TZWxlY3Qocm93PT5uZXcgVGh1bWJuYWlsQ2FuZGlkYXRle1Jvdz1yb3csU2NvcmU9Q2FuZGlkYXRlU2NvcmUocm93LGlkLGNvbnRleHQpfSkuV2hlcmUoeD0+eC5TY29yZT5pbnQuTWluVmFsdWUpLk9yZGVyQnlEZXNjZW5kaW5nKHg9PnguU2NvcmUpLlRha2UoMTApLlRvQXJyYXkoKTsK'),
+          ('IHB1YmxpYyBzdGF0aWMgYXN5bmMgVGFzazxPbmxpbmVUaHVtYm5haWxSZXN1bHQ+IEZpbmQoc3RyaW5nIHRpdGxlLENhbmNlbGxhdGlvblRva2VuIGN0KXsKICBhd2FpdCBnYXRlLldhaXRBc3luYyhjdCkuQ29uZmlndXJlQXdhaXQoZmFsc2UpOwogIHRyeXsKICAgY3QuVGhyb3dJZkNhbmNlbGxhdGlvblJlcXVlc3RlZCgpO3N0cmluZyBmPUZpbGVGb3IodGl0bGUpOwo=','IHB1YmxpYyBzdGF0aWMgVGFzazxPbmxpbmVUaHVtYm5haWxSZXN1bHQ+IEZpbmQoc3RyaW5nIHRpdGxlLENhbmNlbGxhdGlvblRva2VuIGN0KXtyZXR1cm4gRmluZCh0aXRsZSwiIixjdCk7fQogcHVibGljIHN0YXRpYyBhc3luYyBUYXNrPE9ubGluZVRodW1ibmFpbFJlc3VsdD4gRmluZChzdHJpbmcgdGl0bGUsc3RyaW5nIGNvbnRleHQsQ2FuY2VsbGF0aW9uVG9rZW4gY3QpewogIGF3YWl0IGdhdGUuV2FpdEFzeW5jKGN0KS5Db25maWd1cmVBd2FpdChmYWxzZSk7CiAgdHJ5ewogICBjb250ZXh0PUNsZWFuQ29udGV4dChjb250ZXh0KTtjdC5UaHJvd0lmQ2FuY2VsbGF0aW9uUmVxdWVzdGVkKCk7c3RyaW5nIGY9RmlsZUZvcih0aXRsZSxjb250ZXh0KTsK'),
+          ('ICBzdHJpbmcgdHY9U2VhcmNoVGV4dCgiRXhhbXBsZS5TaG93LlMwMkUwNy4xMDgwcC5XRUItREwueDI2NS5ta3YiKTsKICBpZih0di5JbmRleE9mKCJzZWFzb24gMiBlcGlzb2RlIDciLFN0cmluZ0NvbXBhcmlzb24uT3JkaW5hbElnbm9yZUNhc2UpPDApdGhyb3cgbmV3IEludmFsaWRPcGVyYXRpb25FeGNlcHRpb24oIlRWIGVwaXNvZGUgdGh1bWJuYWlsIHF1ZXJ5IGxvc3QgaXRzIHNlYXNvbi9lcGlzb2RlIGlkZW50aXR5LiIpOwo=','ICBzdHJpbmcgdHY9U2VhcmNoVGV4dCgiRXhhbXBsZS5TaG93LlMwMkUwNy4xMDgwcC5XRUItREwueDI2NS5ta3YiKTsKICBpZih0di5JbmRleE9mKCJzZWFzb24gMiBlcGlzb2RlIDciLFN0cmluZ0NvbXBhcmlzb24uT3JkaW5hbElnbm9yZUNhc2UpPDApdGhyb3cgbmV3IEludmFsaWRPcGVyYXRpb25FeGNlcHRpb24oIlRWIGVwaXNvZGUgdGh1bWJuYWlsIHF1ZXJ5IGxvc3QgaXRzIHNlYXNvbi9lcGlzb2RlIGlkZW50aXR5LiIpOwogIHN0cmluZyBjb250ZXh0dWFsPVNlYXJjaFRleHQoIlNhbXBsZS5SZWxlYXNlLjEwODBwLm1rdiIsIlNhbXBsZSBTdWJqZWN0Iik7CiAgaWYoY29udGV4dHVhbC5JbmRleE9mKCJTYW1wbGUgU3ViamVjdCIsU3RyaW5nQ29tcGFyaXNvbi5PcmRpbmFsSWdub3JlQ2FzZSk8MCl0aHJvdyBuZXcgSW52YWxpZE9wZXJhdGlvbkV4Y2VwdGlvbigiU2VhcmNoIGNvbnRleHQgd2FzIG5vdCBwcmVzZXJ2ZWQgZm9yIHRodW1ibmFpbCBsb29rdXAuIik7CiAgaWYoQ2FjaGVLZXkoIlNhbXBsZS5SZWxlYXNlLjEwODBwLm1rdiIsIlNhbXBsZSBTdWJqZWN0Iik9PUNhY2hlS2V5KCJTYW1wbGUuUmVsZWFzZS4xMDgwcC5ta3YiLCJEaWZmZXJlbnQgU3ViamVjdCIpKXRocm93IG5ldyBJbnZhbGlkT3BlcmF0aW9uRXhjZXB0aW9uKCJDb250ZXh0dWFsIHRodW1ibmFpbCBjYWNoZSBrZXlzIGNvbGxpZGVkLiIpOwogIGlmKEZvcmNlU2FmZU9mZigic2FtcGxlIHF1ZXJ5IikuSW5kZXhPZigiIXNhZmVvZmYiLFN0cmluZ0NvbXBhcmlzb24uT3JkaW5hbElnbm9yZUNhc2UpPDApdGhyb3cgbmV3IEludmFsaWRPcGVyYXRpb25FeGNlcHRpb24oIlNhZmUgU2VhcmNoIG92ZXJyaWRlIHRva2VuIGlzIG1pc3NpbmcuIik7Cg==')]
+          for a,b in reps:
+              old,new=d(a),d(b)
+              if old not in s: raise SystemExit('source block not found')
+              s=s.replace(old,new,1)
+          s=s.replace('Uri.EscapeDataString(query)+"&vqd="','Uri.EscapeDataString(effectiveQuery)+"&vqd="',1)
+          s=s.replace('try{Store(title,framed,source);}catch{}','try{Store(title,context,framed,source);}catch{}',1)
+          s=s.replace('FindFromQuery(title,id,PrimaryQuery(id),ct)','FindFromQuery(title,context,id,PrimaryQuery(id,context),ct)')
+          s=s.replace('FindFromQuery(title,id,SecondaryQuery(id),ct)','FindFromQuery(title,context,id,SecondaryQuery(id,context),ct)')
+          p.write_text(s,encoding='utf-8')
+          p=Path('src/VideoShelf/UI/Shelf/Shelf.Online.cs')
+          s=p.read_text(encoding='utf-8')
+          a=d('IGFzeW5jIHZvaWQgU3RhcnRUaHVtYm5haWxMb2FkaW5nKElFbnVtZXJhYmxlPE9ubGluZVJlc3VsdD4gZGlzcGxheWVkKXsKICBpZih0aHVtYm5haWxzTG9hZGluZ3x8dGh1bWJuYWlsc1BhdXNlZHx8b25saW5lU2VhcmNoaW5nfHxzZWN0aW9uIT1TaGVsbFNlY3Rpb24uU2VhcmNofHxJc0Rpc3Bvc2VkKXJldHVybjt2YXIgcGVuZGluZz1kaXNwbGF5ZWQuV2hlcmUocj0+ci5TZWVkZXJzPjApLkdyb3VwQnkocj0+T25saW5lVGh1bWJuYWlsTG9va3VwLkNhY2hlS2V5KHIuVGl0bGUpLFN0cmluZ0NvbXBhcmVyLk9yZGluYWxJZ25vcmVDYXNlKS5TZWxlY3QoZz0+Zy5GaXJzdCgpKS5XaGVyZShyPT4hdGh1bWJuYWlsQXR0ZW1wdGVkLkNvbnRhaW5zKE9ubGluZVRodW1ibmFpbExvb2t1cC5DYWNoZUtleShyLlRpdGxlKSkpLlRha2UoNDApLlRvQXJyYXkoKTtpZihwZW5kaW5nLkxlbmd0aD09MClyZXR1cm47Cg==')
+          b=d('IGFzeW5jIHZvaWQgU3RhcnRUaHVtYm5haWxMb2FkaW5nKElFbnVtZXJhYmxlPE9ubGluZVJlc3VsdD4gZGlzcGxheWVkKXsKICBpZih0aHVtYm5haWxzTG9hZGluZ3x8dGh1bWJuYWlsc1BhdXNlZHx8b25saW5lU2VhcmNoaW5nfHxzZWN0aW9uIT1TaGVsbFNlY3Rpb24uU2VhcmNofHxJc0Rpc3Bvc2VkKXJldHVybjtzdHJpbmcgdGh1bWJuYWlsQ29udGV4dD1vbmxpbmVRdWVyeUZvcjt2YXIgcGVuZGluZz1kaXNwbGF5ZWQuV2hlcmUocj0+ci5TZWVkZXJzPjApLkdyb3VwQnkocj0+T25saW5lVGh1bWJuYWlsTG9va3VwLkNhY2hlS2V5KHIuVGl0bGUsdGh1bWJuYWlsQ29udGV4dCksU3RyaW5nQ29tcGFyZXIuT3JkaW5hbElnbm9yZUNhc2UpLlNlbGVjdChnPT5nLkZpcnN0KCkpLldoZXJlKHI9PiF0aHVtYm5haWxBdHRlbXB0ZWQuQ29udGFpbnMoT25saW5lVGh1bWJuYWlsTG9va3VwLkNhY2hlS2V5KHIuVGl0bGUsdGh1bWJuYWlsQ29udGV4dCkpKS5UYWtlKDQwKS5Ub0FycmF5KCk7aWYocGVuZGluZy5MZW5ndGg9PTApcmV0dXJuOwo=')
+          if a not in s: raise SystemExit('loader block not found')
+          s=s.replace(a,b,1)
+          s=s.replace('OnlineThumbnailLookup.CacheKey(row.Title)','OnlineThumbnailLookup.CacheKey(row.Title,thumbnailContext)')
+          s=s.replace('OnlineThumbnailLookup.Find(row.Title,ct)','OnlineThumbnailLookup.Find(row.Title,thumbnailContext,ct)')
+          s=s.replace('OnlineThumbnailLookup.CacheKey(x.Title)==key','OnlineThumbnailLookup.CacheKey(x.Title,thumbnailContext)==key')
+          s=s.replace('OnlineThumbnailLookup.CacheKey(c.Result.Title)==key','OnlineThumbnailLookup.CacheKey(c.Result.Title,thumbnailContext)==key')
+          s=s.replace('OnlineThumbnailLookup.CacheKey(selectedOnline.Title)==key','OnlineThumbnailLookup.CacheKey(selectedOnline.Title,thumbnailContext)==key')
+          p.write_text(s,encoding='utf-8')
           PY
       - name: Commit source update
         shell: bash
