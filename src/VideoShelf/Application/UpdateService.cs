@@ -155,18 +155,16 @@ static class UpdateService {
 
  public static void LaunchInstallerAndRestart(string installerPath){
   if(string.IsNullOrWhiteSpace(installerPath)||!File.Exists(installerPath))throw new FileNotFoundException("The verified update installer could not be found.",installerPath);
-  string currentDir=AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar,Path.AltDirectorySeparatorChar);
-  string defaultDir=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","VideoShelf");
-  string restartDir=File.Exists(Path.Combine(currentDir,"unins000.exe"))?currentDir:defaultDir;
-  string restartExe=Path.Combine(restartDir,"VideoShelf.exe");
+  string currentExe=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"VideoShelf.exe");
   string helper=Path.Combine(Path.GetDirectoryName(installerPath),"apply-update-"+Guid.NewGuid().ToString("N")+".cmd");
   var script=new StringBuilder();
   script.AppendLine("@echo off");
   script.AppendLine("ping 127.0.0.1 -n 3 >nul");
-  script.AppendLine("start /wait \"\" \""+EscapeBatch(installerPath)+"\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS");
-  script.AppendLine("if errorlevel 1 exit /b %errorlevel%");
-  script.AppendLine("if exist \""+EscapeBatch(restartExe)+"\" start \"\" \""+EscapeBatch(restartExe)+"\"");
+  script.AppendLine("start /wait \"\" \""+EscapeBatch(installerPath)+"\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /VIDEOSHELFUPDATE=1");
+  script.AppendLine("set \"videoshelf_update_exit=%errorlevel%\"");
+  script.AppendLine("if exist \""+EscapeBatch(currentExe)+"\" start \"\" \""+EscapeBatch(currentExe)+"\"");
   script.AppendLine("del \"%~f0\"");
+  script.AppendLine("exit /b %videoshelf_update_exit%");
   File.WriteAllText(helper,script.ToString(),Encoding.ASCII);
   var psi=new ProcessStartInfo("cmd.exe","/d /c \"\""+helper+"\"\""){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Path.GetDirectoryName(helper)};
   Process.Start(psi);
