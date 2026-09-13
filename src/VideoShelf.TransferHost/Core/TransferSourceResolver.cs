@@ -20,19 +20,23 @@ internal static class TransferSourceResolver
         return client;
     }
 
-    public static async Task<string> ResolveAsync(string source, string? pageUrl, CancellationToken token)
+    public static Task<string> ResolveAsync(string source, string? pageUrl, CancellationToken token)
+        => ResolveAsync(source, pageUrl, false, token);
+
+    public static Task<string> ResolveForStreamingAsync(string source, string? pageUrl, CancellationToken token)
+        => ResolveAsync(source, pageUrl, true, token);
+
+    static async Task<string> ResolveAsync(string source, string? pageUrl, bool preferDirectMetadata, CancellationToken token)
     {
         source = (source ?? string.Empty).Trim();
         if (source.Length == 0) return source;
 
-        // A direct .torrent/download URL already contains the complete metadata and
-        // is always preferable to waiting for BEP9 metadata from a peer.
         if (LooksLikeTorrentMetadata(source)) return source;
 
-        // Some indexers expose a deterministic direct torrent URL through the
-        // details page. Use only transformations we can derive locally here so a
-        // magnet source never waits on an extra HTTP page request before DHT starts.
-        if (!string.IsNullOrWhiteSpace(pageUrl))
+        // Streaming can skip BEP9 entirely when a details URL has a deterministic
+        // direct torrent endpoint. Other commands keep the original source so this
+        // optimization cannot make downloads/file inspection less reliable.
+        if (preferDirectMetadata && !string.IsNullOrWhiteSpace(pageUrl))
         {
             string page = pageUrl.Trim();
             string known = NormalizeKnownPage(page);
@@ -110,8 +114,6 @@ internal static class TransferSourceResolver
     {
         if (string.IsNullOrWhiteSpace(html)) return string.Empty;
 
-        // Prefer a direct torrent file over a magnet. This removes an entire
-        // peer-discovery/BEP9 metadata phase from stream startup.
         Match torrent = Regex.Match(html, "href\\s*=\\s*[\\\"'](?<url>[^\\\"']+(?:\\.torrent(?:\\?[^\\\"']*)?))[\\\"']", RegexOptions.IgnoreCase);
         if (torrent.Success)
         {
@@ -163,8 +165,11 @@ internal static class TransferSourceResolver
         if (!fromMagnet.Equals(magnet, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Torrent page magnet resolution failed.");
 
-        string normalized = NormalizeKnownPage("https://nyaa.example/view/12345");
-        if (!normalized.Equals(directTorrent, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Known torrent page normalization failed.");
+        string normal = ResolveAsync(magnet, page.AbsoluteUri, CancellationToken.None).GetAwaiter().GetResult();
+        if (!normal.Equals(magnet, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Normal transfer resolution unexpectedly replaced a magnet source.");
+        string streaming = ResolveForStreamingAsync(magnet, page.AbsoluteUri, CancellationToken.None).GetAwaiter().GetResult();
+        if (!streaming.Equals(directTorrent, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Streaming did not select deterministic direct torrent metadata.");
     }
 }
