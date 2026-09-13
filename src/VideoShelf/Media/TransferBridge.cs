@@ -57,7 +57,7 @@ static class TransferBridge {
  public static void Prefetch(OnlineResult result){
   if(result==null||string.IsNullOrWhiteSpace(result.Link))return;
   string key=(result.Link??"")+"\n"+(result.PageUrl??"");
-  lock(gate){Prune();if(prefetched.Contains(key))return;prefetched.Add(key);if(discoveryProcesses.Count>=3)return;}
+  lock(gate){Prune();if(prefetched.Contains(key)||discoveryProcesses.Count>=3)return;prefetched.Add(key);}
   LaunchHidden("prefetch --source "+Q(result.Link)+PageArg(result));
  }
  public static void StopDiscovery(){
