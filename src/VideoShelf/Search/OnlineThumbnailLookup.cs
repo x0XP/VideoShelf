@@ -90,12 +90,13 @@ static class OnlineThumbnailLookup {
   return new ThumbnailIdentity{Series=generic,CacheIdentity=generic.ToLowerInvariant()};
  }
 
- static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series;}
- static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image";}
+ static string QuotedSeries(string value){string s=(value??"").Replace("\""," ").Trim();return s.Length==0?s:"\""+s+"\"";}
+ static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" screenshot":QuotedSeries(id.Series);}
+ static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" still":QuotedSeries(id.Series)+" image";}
  public static string SearchText(string title){return PrimaryQuery(Identify(title));}
 
  public static string CacheKey(string title){
-  string key="v2|"+Identify(title).CacheIdentity;
+  string key="v3|"+Identify(title).CacheIdentity;
   using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
  }
 
@@ -145,21 +146,35 @@ static class OnlineThumbnailLookup {
   }
   return Regex.IsMatch(lower,@"\b(?:episode|ep)\s*[#:_\-. ]*0*"+id.Episode+@"\b",RegexOptions.IgnoreCase) || Regex.IsMatch(lower,@"(?:^|[/_\-. ])0*"+id.Episode+@"(?:[/_\-. ]|$)",RegexOptions.IgnoreCase);
  }
+ static bool HasConflictingEpisodeReference(string text,ThumbnailIdentity id){
+  if(!id.Episodic)return false;
+  foreach(Match m in Regex.Matches(text??"",@"\bS(?<s>\d{1,2})E(?<e>\d{1,3})\b",RegexOptions.IgnoreCase)){
+   int s,e;if(int.TryParse(m.Groups["s"].Value,out s)&&int.TryParse(m.Groups["e"].Value,out e)&&(e!=id.Episode||(id.Season>=0&&s!=id.Season)))return true;
+  }
+  foreach(Match m in Regex.Matches(text??"",@"\b(?:episode|ep)\s*[#:_\-. ]*0*(?<e>\d{1,4})\b",RegexOptions.IgnoreCase)){
+   int e;if(int.TryParse(m.Groups["e"].Value,out e)&&e!=id.Episode)return true;
+  }
+  return false;
+ }
+ static int MatchedWordCount(string[] words,string normalized){int count=0;foreach(string word in words)if(Regex.IsMatch(normalized,@"(?:^| )"+Regex.Escape(word)+@"(?: |$)",RegexOptions.IgnoreCase))count++;return count;}
  static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id){
   string title=Value(row,"title"),url=Value(row,"url"),image=Value(row,"image");
-  string combined=title+" "+url+" "+image;
-  string normalized=NormalizedWords(combined);
-  string[] words=SignificantWords(id.Series);int matched=0;
-  foreach(string word in words)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)matched++;
-  int minimum=words.Length<=1?words.Length:Math.Min(2,words.Length);
-  if(matched<minimum)return int.MinValue;
-  if(id.Episodic&&!ContainsEpisodeReference(combined,id))return int.MinValue;
-  int score=matched*5;
+  string evidence=title+" "+url;
+  string normalizedTitle=NormalizedWords(title),normalizedUrl=NormalizedWords(url),seriesPhrase=NormalizedWords(id.Series);
+  string[] words=SignificantWords(id.Series);
+  int titleMatched=MatchedWordCount(words,normalizedTitle),urlMatched=MatchedWordCount(words,normalizedUrl),matched=Math.Max(titleMatched,urlMatched);
+  bool exact=seriesPhrase.Length>0&&(normalizedTitle.Contains(seriesPhrase)||normalizedUrl.Contains(seriesPhrase));
+  int minimum=words.Length<=3?words.Length:Math.Max(3,(int)Math.Ceiling(words.Length*0.70));
+  if(!exact&&matched<minimum)return int.MinValue;
+  if(id.Episodic&&!ContainsEpisodeReference(evidence,id))return int.MinValue;
+  if(id.Episodic&&HasConflictingEpisodeReference(evidence,id))return int.MinValue;
+  int score=matched*6;
+  if(exact)score+=25;
   if(id.Episodic)score+=30;
-  if(Regex.IsMatch(combined,@"\b(screenshot|screencap|screen\s*cap|still|gallery|recap|review)\b",RegexOptions.IgnoreCase))score+=8;
-  if(Regex.IsMatch(combined,@"\b(poster|wallpaper|key\s*visual|promotional|promo|cover|box\s*art)\b",RegexOptions.IgnoreCase))score-=14;
-  string seriesWords=NormalizedWords(id.Series);
-  if(seriesWords.Length>0&&normalized.Contains(seriesWords))score+=10;
+  if(Regex.IsMatch(evidence,@"\b(screenshot|screencap|screen\s*cap|still|gallery|recap|review|scene|frame)\b",RegexOptions.IgnoreCase))score+=10;
+  if(Regex.IsMatch(evidence,@"\b(poster|wallpaper|key\s*visual|promotional|promo|cover|box\s*art|fanart|fan\s*art)\b",RegexOptions.IgnoreCase))score-=20;
+  if(id.Episodic&&score<60)return int.MinValue;
+  if(!id.Episodic&&score<20)return int.MinValue;
   return score;
  }
 
@@ -222,6 +237,13 @@ static class OnlineThumbnailLookup {
   if(CacheKey(anime)==CacheKey("[SubsPlease] Re Zero kara Hajimeru Isekai Seikatsu - 83 (1080p).mkv"))throw new InvalidOperationException("Episode thumbnails share a cache key.");
   string tv=SearchText("Example.Show.S02E07.1080p.WEB-DL.x265.mkv");
   if(tv.IndexOf("season 2 episode 7",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("TV episode thumbnail query lost its season/episode identity.");
+  var id=Identify(anime);
+  var correct=new Dictionary<string,object>{{"title","Re Zero kara Hajimeru Isekai Seikatsu episode 82 screenshot"},{"url","https://example.test/re-zero-kara-hajimeru-isekai-seikatsu/episode-82"},{"image","https://example.test/82.jpg"}};
+  if(CandidateScore(correct,id)==int.MinValue)throw new InvalidOperationException("Strong episode-specific thumbnail candidate was rejected.");
+  var weak=new Dictionary<string,object>{{"title","Re Zero episode 82 screenshot"},{"url","https://example.test/random/episode-82"},{"image","https://example.test/82.jpg"}};
+  if(CandidateScore(weak,id)!=int.MinValue)throw new InvalidOperationException("Weak unrelated thumbnail candidate was accepted.");
+  var wrongEpisode=new Dictionary<string,object>{{"title","Re Zero kara Hajimeru Isekai Seikatsu episode 83 screenshot"},{"url","https://example.test/re-zero/episode-83"},{"image","https://example.test/83.jpg"}};
+  if(CandidateScore(wrongEpisode,id)!=int.MinValue)throw new InvalidOperationException("Wrong-episode thumbnail candidate was accepted.");
  }
 }
 }
