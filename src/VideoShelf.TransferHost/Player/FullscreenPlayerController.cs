@@ -233,6 +233,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         if (!isFullScreen || disposed) return;
         int target = show ? expandedBottomBarHeight : 0;
         controlsRequestedVisible = show;
+        if (controlsAnimationTimer.Enabled && controlsAnimationTargetHeight == target) return;
         if (show && !bottomBar.Visible)
         {
             bottomBar.Height = 0;
