@@ -36,33 +36,32 @@ sealed partial class Shelf {
   var version=new Label{Text="Installed version: v"+AppVersion.Current,Left=20,Top=48,Width=330,Height=22,ForeColor=XdolfTheme.Muted};
   updateStatus.SetBounds(20,76,710,30);updateStatus.ForeColor=XdolfTheme.Muted;updateStatus.Text="Stable updates are delivered through GitHub Releases.";
   Style(updateButton,"Check for updates",20,113,154);updateButton.Height=36;
-  updateButton.Click+=async delegate{if(availableUpdate!=null&&!updateBusy)await InstallUpdateAsync(availableUpdate);else await CheckForUpdatesAsync(true);};
+  updateButton.Click+=async delegate{if(availableUpdate!=null&&!updateBusy)await PromptUpdateAsync(availableUpdate);else await CheckForUpdatesAsync(true);};
   box.Controls.AddRange(new Control[]{heading,version,updateStatus,updateButton});
   settingsView.Controls.Add(box);
  }
 
  async Task CheckForUpdatesAsync(bool interactive){
   if(updateBusy)return;
+  UpdateInfo promptInfo=null;
   updateBusy=true;availableUpdate=null;updateButton.Enabled=false;updateButton.Text="Checking...";updateStatus.Text="Checking the latest stable release...";
   try{
    var info=await UpdateService.CheckForUpdateAsync(updateCts.Token);
    if(IsDisposed)return;
    if(info==null){updateStatus.Text="You're up to date — v"+AppVersion.Current;updateButton.Text="Check for updates";if(interactive)MessageBox.Show(this,"VideoShelf v"+AppVersion.Current+" is the latest stable release.","VideoShelf updates",MessageBoxButtons.OK,MessageBoxIcon.Information);}
-   else{
-    availableUpdate=info;updateStatus.Text="VideoShelf v"+info.VersionText+" is available.";updateButton.Text="Install update";
-    if(interactive||Visible)PromptUpdate(info);
-   }
+   else{availableUpdate=info;promptInfo=info;updateStatus.Text="VideoShelf v"+info.VersionText+" is available.";updateButton.Text="Install update";}
   }catch(OperationCanceledException){}
   catch(Exception ex){if(!IsDisposed){updateStatus.Text="Update check unavailable. You can try again later.";updateButton.Text="Check for updates";if(interactive)MessageBox.Show(this,"VideoShelf could not check for updates.\n\n"+ex.Message,"VideoShelf updates",MessageBoxButtons.OK,MessageBoxIcon.Information);}}
   finally{if(!IsDisposed){updateBusy=false;updateButton.Enabled=true;}}
+  if(promptInfo!=null&&!IsDisposed)await PromptUpdateAsync(promptInfo);
  }
 
- void PromptUpdate(UpdateInfo info){
+ async Task PromptUpdateAsync(UpdateInfo info){
   if(info==null||updateBusy)return;
   string notes=string.IsNullOrWhiteSpace(info.Notes)?"No release notes were provided.":info.Notes.Trim();
   if(notes.Length>1200)notes=notes.Substring(0,1200).TrimEnd()+"…";
   string message="VideoShelf v"+info.VersionText+" is available.\n\n"+notes+"\n\nDownload, verify and install this update now?";
-  if(MessageBox.Show(this,message,"VideoShelf update available",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)_=InstallUpdateAsync(info);
+  if(MessageBox.Show(this,message,"VideoShelf update available",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)await InstallUpdateAsync(info);
  }
 
  async Task InstallUpdateAsync(UpdateInfo info){
