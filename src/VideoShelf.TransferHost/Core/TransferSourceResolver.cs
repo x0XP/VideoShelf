@@ -24,19 +24,42 @@ internal static class TransferSourceResolver
     {
         source = (source ?? string.Empty).Trim();
         if (source.Length == 0) return source;
+
+        // A direct .torrent/download URL already contains the complete metadata and
+        // is always preferable to waiting for BEP9 metadata from a peer.
+        if (LooksLikeTorrentMetadata(source)) return source;
+
+        // Search feeds commonly give VideoShelf both a magnet and a human-facing
+        // details page. Resolve the page before accepting the magnet so we can use
+        // a direct torrent metadata URL when the indexer exposes one.
+        if (!string.IsNullOrWhiteSpace(pageUrl))
+        {
+            string page = pageUrl.Trim();
+            string known = NormalizeKnownPage(page);
+            if (!known.Equals(page, StringComparison.OrdinalIgnoreCase) && LooksLikeTorrentMetadata(known))
+                return known;
+
+            string resolved = await ResolvePageAsync(page, token).ConfigureAwait(false);
+            if (resolved.Length > 0) return resolved;
+        }
+
         if (MagnetLink.TryParse(source, out MagnetLink? direct) && direct != null) return source;
 
-        var candidates = new List<string>();
-        if (!string.IsNullOrWhiteSpace(pageUrl)) candidates.Add(pageUrl.Trim());
-        if (LooksLikePage(source) && !candidates.Contains(source, StringComparer.OrdinalIgnoreCase)) candidates.Add(source);
-
-        foreach (string candidate in candidates)
+        if (LooksLikePage(source))
         {
-            string resolved = await ResolvePageAsync(candidate, token).ConfigureAwait(false);
+            string resolved = await ResolvePageAsync(source, token).ConfigureAwait(false);
             if (resolved.Length > 0) return resolved;
         }
 
         return NormalizeKnownPage(source);
+    }
+
+    static bool LooksLikeTorrentMetadata(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return false;
+        string path = uri.AbsolutePath.ToLowerInvariant();
+        return path.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase) || path.Contains("/download/");
     }
 
     static bool LooksLikePage(string value)
@@ -84,6 +107,15 @@ internal static class TransferSourceResolver
     {
         if (string.IsNullOrWhiteSpace(html)) return string.Empty;
 
+        // Prefer a direct torrent file over a magnet. This removes an entire
+        // peer-discovery/BEP9 metadata phase from stream startup.
+        Match torrent = Regex.Match(html, "href\\s*=\\s*[\\\"'](?<url>[^\\\"']+(?:\\.torrent(?:\\?[^\\\"']*)?))[\\\"']", RegexOptions.IgnoreCase);
+        if (torrent.Success)
+        {
+            string href = WebUtility.HtmlDecode(torrent.Groups["url"].Value);
+            if (Uri.TryCreate(page, href, out var absolute)) return absolute.AbsoluteUri;
+        }
+
         Match magnet = Regex.Match(html, "magnet:\\?[^\\s\\\"'<>]+", RegexOptions.IgnoreCase);
         if (magnet.Success)
         {
@@ -93,13 +125,6 @@ internal static class TransferSourceResolver
 
         Match infoHash = Regex.Match(html, "info\\s*hash.{0,400}?([a-f0-9]{40})", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         if (infoHash.Success) return "magnet:?xt=urn:btih:" + infoHash.Groups[1].Value;
-
-        Match torrent = Regex.Match(html, "href\\s*=\\s*[\\\"'](?<url>[^\\\"']+(?:\\.torrent(?:\\?[^\\\"']*)?))[\\\"']", RegexOptions.IgnoreCase);
-        if (torrent.Success)
-        {
-            string href = WebUtility.HtmlDecode(torrent.Groups["url"].Value);
-            if (Uri.TryCreate(page, href, out var absolute)) return absolute.AbsoluteUri;
-        }
 
         return string.Empty;
     }
@@ -125,12 +150,18 @@ internal static class TransferSourceResolver
             throw new InvalidOperationException("Torrent page info-hash resolution failed.");
 
         string magnet = "magnet:?xt=urn:btih:" + hash + "&dn=VideoShelf";
+        string directTorrent = "https://nyaa.example/download/12345.torrent";
+        string mixed = "<a href=\"" + magnet.Replace("&", "&amp;") + "\">Magnet</a><a href=\"/download/12345.torrent\">Torrent</a>";
+        string preferred = ExtractTransferSource(mixed, page);
+        if (!preferred.Equals(directTorrent, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Direct torrent metadata was not preferred over magnet metadata discovery.");
+
         string fromMagnet = ExtractTransferSource("<a href=\"" + magnet.Replace("&", "&amp;") + "\">Magnet</a>", page);
         if (!fromMagnet.Equals(magnet, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Torrent page magnet resolution failed.");
 
         string normalized = NormalizeKnownPage("https://nyaa.example/view/12345");
-        if (!normalized.Equals("https://nyaa.example/download/12345.torrent", StringComparison.OrdinalIgnoreCase))
+        if (!normalized.Equals(directTorrent, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Known torrent page normalization failed.");
     }
 }
