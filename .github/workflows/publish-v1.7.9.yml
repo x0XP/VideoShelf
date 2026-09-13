@@ -120,7 +120,8 @@ jobs:
           $oldHost = Start-Process -FilePath $transferExe -ArgumentList @('stream','--source','magnet:?xt=urn:btih:0123456789012345678901234567890123456789','--title','v178-runtime-lock') -WorkingDirectory $transferDir -PassThru
           Start-Sleep -Seconds 2
           if ($oldMain.HasExited -or $oldHost.HasExited) { throw 'Previous runtime did not remain running for upgrade test.' }
-          $upgrade = Start-Process -FilePath $env:VIDEOSHELF_RELEASE_INSTALLER -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/VIDEOSHELFUPDATE=1',('/DIR="' + $installDir + '"')) -Wait -PassThru
+          $upgrade = Start-Process -FilePath $env:VIDEOSHELF_RELEASE_INSTALLER -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/VIDEOSHELFUPDATE=1',('/DIR="' + $installDir + '"')) -PassThru
+          $upgrade.WaitForExit()
           if ($upgrade.ExitCode -ne 0) { throw 'v1.7.8 -> v1.7.9 upgrade failed.' }
           try { $oldMain.Refresh() } catch {}; try { $oldHost.Refresh() } catch {}
           if (-not $oldMain.HasExited -or -not $oldHost.HasExited) { throw 'Upgrade did not terminate the old runtime.' }
