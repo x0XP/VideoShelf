@@ -219,11 +219,11 @@ static class OnlineThumbnailLookup {
    context=CleanContext(context);ct.ThrowIfCancellationRequested();string f=FileFor(title,context);
    if(File.Exists(f))try{return new OnlineThumbnailResult{Image=DecodeAndFrame(File.ReadAllBytes(f)),FromCache=true,Source=File.Exists(f+".source")?File.ReadAllText(f+".source"):"Cached search result"};}catch{}
    if(DateTime.UtcNow<blockedUntil)return new OnlineThumbnailResult{Error="Thumbnail lookup is temporarily paused after a search-engine access check.",TemporarilyBlocked=true};
-   await Task.Delay(850,ct).ConfigureAwait(false);
+   await Task.Delay(1000,ct).ConfigureAwait(false);
    ThumbnailIdentity id=Identify(title);
    OnlineThumbnailResult result=await FindFromQuery(title,context,id,PrimaryQuery(id,context),ct).ConfigureAwait(false);
-   if(result==null&&id.Episodic){await Task.Delay(350,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
-   if(result==null&&!id.Episodic){await Task.Delay(350,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
+   if(result==null&&id.Episodic){await Task.Delay(500,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
+   if(result==null&&!id.Episodic){await Task.Delay(500,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
    if(result!=null)return result;
    return new OnlineThumbnailResult{Error=id.Episodic?"No episode-specific search-engine thumbnail found.":"No usable search-engine thumbnail found."};
   }catch(LookupBlockedException ex){blockedUntil=DateTime.UtcNow.AddMinutes(10);return new OnlineThumbnailResult{Error=ex.Message,TemporarilyBlocked=true};}
