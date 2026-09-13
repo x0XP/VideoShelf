@@ -62,5 +62,15 @@ sealed class UpdateProgressForm : Form {
   fill.Width=Math.Max(0,Math.Min(track.ClientSize.Width,width));
   fill.Invalidate();track.Invalidate();
  }
+
+ public static void SelfTest(){
+  using(var form=new UpdateProgressForm(new UpdateInfo{VersionText="9.9.9"})){
+   form.SetDownloadProgress(42);
+   if(form.heading.Text!="Downloading update"||form.percent.Text!="42%"||form.fill.Width<=0||form.fill.Width>=form.track.Width)throw new InvalidOperationException("Updater download progress UI self-test failed.");
+   form.SetVerifying();if(form.heading.Text!="Verifying update"||form.percent.Text.Length!=0||form.fill.Width!=form.track.Width)throw new InvalidOperationException("Updater verification UI self-test failed.");
+   form.SetVerified();if(form.heading.Text!="Update downloaded"||form.percent.Text!="100%")throw new InvalidOperationException("Updater verified UI self-test failed.");
+   form.SetInstalling();if(form.heading.Text!="Installing update")throw new InvalidOperationException("Updater installation UI self-test failed.");
+  }
+ }
 }
 }
