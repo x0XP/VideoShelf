@@ -523,6 +523,15 @@ begin
     Result := ReleaseValue >= DotNet48Release;
 end;
 
+procedure StopRunningVideoShelf();
+var
+  ResultCode: Integer;
+begin
+  Log('Stopping any remaining VideoShelf process before upgrade.');
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM VideoShelf.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(250);
+end;
+
 procedure StopTransferRuntime();
 var
   ResultCode: Integer;
@@ -542,6 +551,7 @@ begin
   if not ExistingInstallBeforeSetup then
     exit;
 
+  StopRunningVideoShelf();
   StopTransferRuntime();
   TransferPath := ExpandConstant('{app}\TransferHost');
   LegacyTransferPath := ExpandConstant('{app}\TransferHostRuntime');
