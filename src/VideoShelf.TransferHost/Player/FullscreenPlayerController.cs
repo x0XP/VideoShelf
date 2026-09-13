@@ -3,6 +3,7 @@ namespace VideoShelf.TransferHost;
 internal sealed class FullscreenPlayerController : IDisposable
 {
     static readonly TimeSpan FullScreenControlsIdleTimeout = TimeSpan.FromSeconds(2.5);
+    const int ControlsAnimationDurationMs = 180;
 
     readonly Form form;
     readonly Panel topBar;
@@ -15,13 +16,19 @@ internal sealed class FullscreenPlayerController : IDisposable
     readonly PlayerIconButton fullScreen;
     readonly ToolTip toolTip = new();
     readonly System.Windows.Forms.Timer pointerIdleTimer = new() { Interval = 100 };
+    readonly System.Windows.Forms.Timer controlsAnimationTimer = new() { Interval = 15 };
     FormBorderStyle savedBorderStyle;
     FormWindowState savedWindowState;
     Rectangle savedBounds;
     Point lastPointerPosition;
     DateTime lastPointerActivityUtc;
+    long controlsAnimationStarted;
+    int expandedBottomBarHeight;
+    int controlsAnimationStartHeight;
+    int controlsAnimationTargetHeight;
     bool savedTopMost;
     bool isFullScreen;
+    bool controlsRequestedVisible = true;
     bool disposed;
 
     FullscreenPlayerController(Form form)
@@ -29,6 +36,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         this.form = form;
         topBar = form.Controls.OfType<Panel>().First(p => p.Dock == DockStyle.Top);
         bottomBar = form.Controls.OfType<Panel>().First(p => p.Dock == DockStyle.Bottom);
+        expandedBottomBarHeight = Math.Max(1, bottomBar.Height);
         seek = bottomBar.Controls.OfType<SeekBar>().First();
         timeLabel = bottomBar.Controls.OfType<Label>().First();
 
@@ -38,8 +46,11 @@ internal sealed class FullscreenPlayerController : IDisposable
         sourceStop = bottomBar.Controls.OfType<Button>()
             .FirstOrDefault(b => b.Text.Equals("Stop", StringComparison.OrdinalIgnoreCase));
 
-        sourcePlayPause.Visible = false;
+        // Keep the source button logically visible so WinForms PerformClick can dispatch its Click event.
+        // It is moved outside the viewport because the icon button below is the player-facing control.
         sourcePlayPause.TabStop = false;
+        sourcePlayPause.SetBounds(-10000, -10000, 1, 1);
+        sourcePlayPause.Visible = true;
         if (sourceStop != null)
         {
             sourceStop.Visible = false;
@@ -66,6 +77,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         sourcePlayPause.TextChanged += OnSourcePlayPauseChanged;
         sourcePlayPause.EnabledChanged += OnSourcePlayPauseChanged;
         pointerIdleTimer.Tick += OnPointerIdleTimerTick;
+        controlsAnimationTimer.Tick += OnControlsAnimationTick;
         HookDoubleClick(form);
         RelayoutControls();
     }
@@ -148,6 +160,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         savedWindowState = form.WindowState;
         savedBounds = form.WindowState == FormWindowState.Normal ? form.Bounds : form.RestoreBounds;
         savedTopMost = form.TopMost;
+        expandedBottomBarHeight = Math.Max(expandedBottomBarHeight, bottomBar.Height);
 
         Rectangle screen = Screen.FromControl(form).Bounds;
         form.SuspendLayout();
@@ -156,7 +169,9 @@ internal sealed class FullscreenPlayerController : IDisposable
         form.TopMost = true;
         form.Bounds = screen;
         topBar.Visible = false;
+        bottomBar.Height = expandedBottomBarHeight;
         bottomBar.Visible = true;
+        controlsRequestedVisible = true;
         fullScreen.IconKind = PlayerIconKind.ExitFullScreen;
         fullScreen.AccessibleName = "Exit full screen";
         toolTip.SetToolTip(fullScreen, "Exit full screen");
@@ -171,9 +186,12 @@ internal sealed class FullscreenPlayerController : IDisposable
     {
         if (!isFullScreen || disposed) return;
         pointerIdleTimer.Stop();
+        controlsAnimationTimer.Stop();
         form.SuspendLayout();
         topBar.Visible = true;
         bottomBar.Visible = true;
+        bottomBar.Height = expandedBottomBarHeight;
+        controlsRequestedVisible = true;
         form.TopMost = savedTopMost;
         form.FormBorderStyle = savedBorderStyle;
         form.WindowState = FormWindowState.Normal;
@@ -202,16 +220,59 @@ internal sealed class FullscreenPlayerController : IDisposable
         {
             lastPointerPosition = pointerPosition;
             lastPointerActivityUtc = DateTime.UtcNow;
-            if (!bottomBar.Visible)
-            {
-                bottomBar.Visible = true;
-                RelayoutControls();
-            }
+            BeginControlsAnimation(true);
             return;
         }
 
-        if (bottomBar.Visible && DateTime.UtcNow - lastPointerActivityUtc >= FullScreenControlsIdleTimeout)
-            bottomBar.Visible = false;
+        if (controlsRequestedVisible && DateTime.UtcNow - lastPointerActivityUtc >= FullScreenControlsIdleTimeout)
+            BeginControlsAnimation(false);
+    }
+
+    void BeginControlsAnimation(bool show)
+    {
+        if (!isFullScreen || disposed) return;
+        int target = show ? expandedBottomBarHeight : 0;
+        controlsRequestedVisible = show;
+        if (show && !bottomBar.Visible)
+        {
+            bottomBar.Height = 0;
+            bottomBar.Visible = true;
+        }
+
+        if (bottomBar.Height == target)
+        {
+            controlsAnimationTimer.Stop();
+            if (!show) bottomBar.Visible = false;
+            return;
+        }
+
+        controlsAnimationStartHeight = bottomBar.Height;
+        controlsAnimationTargetHeight = target;
+        controlsAnimationStarted = Environment.TickCount64;
+        controlsAnimationTimer.Start();
+    }
+
+    void OnControlsAnimationTick(object? sender, EventArgs e)
+    {
+        if (!isFullScreen || disposed)
+        {
+            controlsAnimationTimer.Stop();
+            return;
+        }
+
+        double t = Math.Min(1d, (Environment.TickCount64 - controlsAnimationStarted) / (double)ControlsAnimationDurationMs);
+        double eased = t * t * (3d - 2d * t);
+        int height = (int)Math.Round(controlsAnimationStartHeight + (controlsAnimationTargetHeight - controlsAnimationStartHeight) * eased);
+        bottomBar.Height = Math.Max(0, height);
+        form.PerformLayout();
+
+        if (t >= 1d)
+        {
+            controlsAnimationTimer.Stop();
+            bottomBar.Height = controlsAnimationTargetHeight;
+            if (controlsAnimationTargetHeight == 0) bottomBar.Visible = false;
+            form.PerformLayout();
+        }
     }
 
     void OnResize(object? sender, EventArgs e) => RelayoutControls();
@@ -243,7 +304,9 @@ internal sealed class FullscreenPlayerController : IDisposable
         if (disposed) return;
         disposed = true;
         pointerIdleTimer.Stop();
+        controlsAnimationTimer.Stop();
         pointerIdleTimer.Tick -= OnPointerIdleTimerTick;
+        controlsAnimationTimer.Tick -= OnControlsAnimationTick;
         form.KeyDown -= OnKeyDown;
         form.Resize -= OnResize;
         form.FormClosed -= OnFormClosed;
@@ -253,6 +316,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         sourcePlayPause.EnabledChanged -= OnSourcePlayPauseChanged;
         UnhookDoubleClick(form);
         pointerIdleTimer.Dispose();
+        controlsAnimationTimer.Dispose();
         toolTip.Dispose();
         if (!playPause.IsDisposed) playPause.Dispose();
         if (!fullScreen.IsDisposed) fullScreen.Dispose();
