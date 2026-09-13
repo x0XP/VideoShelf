@@ -1,0 +1,236 @@
+name: Publish approved v1.7.5
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/publish-v1.7.5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-v1-7-5:
+    runs-on: windows-latest
+    env:
+      RELEASE_VERSION: 1.7.5
+      RELEASE_TAG: v1.7.5
+      RELEASE_SOURCE: 0b5709dfeb3decd6edf530b7e9ecc4ce6322457e
+      PREVIOUS_VERSION: 1.7.4
+      PREVIOUS_SHA256: fd10f0b63d733fd53da0e9c2a1f1889248b3d0f6a1d1ee6a0db7cca637734072
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_SOURCE }}
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify approved source version
+        shell: powershell
+        run: |
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne $env:RELEASE_SOURCE) { throw "Expected source $env:RELEASE_SOURCE but checked out $head." }
+          $source = Get-Content '.\src\VideoShelf\Application\AppVersion.cs' -Raw
+          $match = [regex]::Match($source, 'Current\s*=\s*"([0-9]+(?:\.[0-9]+){1,3})"')
+          if (-not $match.Success) { throw 'Could not resolve AppVersion.Current.' }
+          if ($match.Groups[1].Value -ne $env:RELEASE_VERSION) { throw "Expected AppVersion $env:RELEASE_VERSION but found $($match.Groups[1].Value)." }
+
+      - name: Build and self-test VideoShelf
+        shell: cmd
+        run: |
+          Start.cmd --build-only
+          VideoShelf.exe --self-test
+
+      - name: Publish and self-test transfer runtime
+        shell: powershell
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'VideoShelf-release-package'
+          $transferDir = Join-Path $package 'TransferHost'
+          New-Item -ItemType Directory -Force -Path $transferDir | Out-Null
+          dotnet publish '.\src\VideoShelf.TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
+          if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
+          Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
+          Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
+          Copy-Item '.\VideoShelf.png' (Join-Path $package 'VideoShelf.png')
+          $test = Start-Process -FilePath (Join-Path $transferDir 'VideoShelf.TransferHost.exe') -ArgumentList '--self-test' -Wait -PassThru
+          if ($test.ExitCode -ne 0) { throw 'TransferHost self-test failed.' }
+          "VIDEOSHELF_RELEASE_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build exact v1.7.5 installer
+        shell: powershell
+        run: |
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+            $iscc = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'ISCC.exe was not found.' }
+
+          $issPath = '.\installer\VideoShelf.release.iss'
+          $iss = Get-Content '.\installer\VideoShelf.iss' -Raw
+          $iss = [regex]::Replace($iss, '(?m)^OutputBaseFilename=.*$', "OutputBaseFilename=VideoShelf-Setup-v$env:RELEASE_VERSION")
+          $iss = [regex]::Replace($iss, '(?m)^VersionInfoVersion=.*$', "VersionInfoVersion=$env:RELEASE_VERSION.0")
+          Set-Content -Path $issPath -Value $iss -Encoding UTF8
+
+          $out = Join-Path $env:RUNNER_TEMP 'VideoShelf-release-v1.7.5'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          & $iscc "/DSourceDir=$env:VIDEOSHELF_RELEASE_PACKAGE" "/DOutputDir=$out" "/DAppVersion=$env:RELEASE_VERSION" $issPath
+          if ($LASTEXITCODE -ne 0) { throw 'Release installer compilation failed.' }
+          $installer = Join-Path $out ("VideoShelf-Setup-v{0}.exe" -f $env:RELEASE_VERSION)
+          if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1000000) { throw 'Release installer was not created correctly.' }
+          $hash = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Installer SHA256: $hash"
+          "VIDEOSHELF_RELEASE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VIDEOSHELF_RELEASE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Test clean install and current updater handoff
+        shell: powershell
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-v1.7.5-install-test'
+          $mainExe = Join-Path $installDir 'VideoShelf.exe'
+          $transferExe = Join-Path $installDir 'TransferHost\VideoShelf.TransferHost.exe'
+
+          $install = Start-Process -FilePath $env:VIDEOSHELF_RELEASE_INSTALLER -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $installDir + '"')
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)." }
+          if (!(Test-Path $mainExe) -or !(Test-Path $transferExe)) { throw 'Installed release is incomplete.' }
+
+          $mainTest = Start-Process -FilePath $mainExe -ArgumentList '--self-test' -WorkingDirectory $installDir -Wait -PassThru
+          $transferTest = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -WorkingDirectory (Split-Path $transferExe) -Wait -PassThru
+          if ($mainTest.ExitCode -ne 0 -or $transferTest.ExitCode -ne 0) { throw 'Installed release self-test failed.' }
+
+          $probe = Join-Path $env:RUNNER_TEMP 'invoke-videoshelf-v175-updater.ps1'
+          @'
+          param([string]$MainExe, [string]$Installer)
+          $assembly = [Reflection.Assembly]::LoadFrom($MainExe)
+          $type = $assembly.GetType('VideoShelf.UpdateService', $true)
+          $flags = [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static
+          $method = $type.GetMethod('LaunchInstallerAndRestart', $flags)
+          if ($null -eq $method) { throw 'LaunchInstallerAndRestart was not found.' }
+          $null = $method.Invoke($null, @($Installer))
+          Start-Sleep -Seconds 3
+          '@ | Set-Content -Path $probe -Encoding UTF8
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -MainExe $mainExe -Installer $env:VIDEOSHELF_RELEASE_INSTALLER
+          if ($LASTEXITCODE -ne 0) { throw "Updater handoff probe failed with exit code $LASTEXITCODE." }
+
+          $launched = $null
+          $deadline = [DateTime]::UtcNow.AddSeconds(45)
+          while ([DateTime]::UtcNow -lt $deadline -and $null -eq $launched) {
+            $launched = Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -eq $mainExe } catch { $false } } | Select-Object -First 1
+            if ($null -eq $launched) { Start-Sleep -Milliseconds 500 }
+          }
+          if ($null -eq $launched) { throw 'Updater handoff completed but VideoShelf did not relaunch.' }
+          Start-Sleep -Seconds 2
+          $running = @(Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -eq $mainExe } catch { $false } })
+          if ($running.Count -ne 1) { throw "Expected exactly one relaunched VideoShelf process, found $($running.Count)." }
+          $running | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Clean-install regression uninstall failed.' }
+
+      - name: Test v1.7.4 upgrade with running app and TransferHost
+        shell: powershell
+        run: |
+          $previousInstaller = Join-Path $env:RUNNER_TEMP ("VideoShelf-Setup-v{0}.exe" -f $env:PREVIOUS_VERSION)
+          $previousUrl = "https://github.com/x0XP/VideoShelf/releases/download/v$env:PREVIOUS_VERSION/VideoShelf-Setup-v$env:PREVIOUS_VERSION.exe"
+          Invoke-WebRequest -UseBasicParsing -Uri $previousUrl -OutFile $previousInstaller
+          $previousHash = (Get-FileHash -Path $previousInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($previousHash -ne $env:PREVIOUS_SHA256) { throw "Unexpected v$env:PREVIOUS_VERSION installer hash: $previousHash" }
+
+          $installDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-v174-to-v175-upgrade-test'
+          $oldInstall = Start-Process -FilePath $previousInstaller -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $installDir + '"')
+          ) -Wait -PassThru
+          if ($oldInstall.ExitCode -ne 0) { throw "v$env:PREVIOUS_VERSION install failed with exit code $($oldInstall.ExitCode)." }
+
+          $mainExe = Join-Path $installDir 'VideoShelf.exe'
+          $transferDir = Join-Path $installDir 'TransferHost'
+          $transferExe = Join-Path $transferDir 'VideoShelf.TransferHost.exe'
+          $transferDll = Join-Path $transferDir 'VideoShelf.TransferHost.dll'
+          if (!(Test-Path $mainExe) -or !(Test-Path $transferExe) -or !(Test-Path $transferDll)) { throw 'Previous VideoShelf installation was incomplete.' }
+          'must disappear during clean runtime replacement' | Set-Content -Path (Join-Path $transferDir 'legacy-runtime-sentinel.txt') -Encoding ASCII
+
+          $oldMain = Start-Process -FilePath $mainExe -WorkingDirectory $installDir -PassThru
+          Start-Sleep -Seconds 2
+          if ($oldMain.HasExited) { throw 'v1.7.4 VideoShelf did not remain running long enough to test update compatibility.' }
+
+          $oldHost = Start-Process -FilePath $transferExe -ArgumentList @(
+            'stream','--source','magnet:?xt=urn:btih:0123456789012345678901234567890123456789','--title','LegacyLock'
+          ) -WorkingDirectory $transferDir -PassThru
+          Start-Sleep -Seconds 2
+          if ($oldHost.HasExited) { throw 'v1.7.4 TransferHost did not remain running long enough to test locked-runtime replacement.' }
+
+          $upgrade = Start-Process -FilePath $env:VIDEOSHELF_RELEASE_INSTALLER -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/VIDEOSHELFUPDATE=1',('/DIR="' + $installDir + '"')
+          ) -PassThru
+          $upgrade.WaitForExit()
+          if ($upgrade.ExitCode -ne 0) { throw "v1.7.4 -> v1.7.5 upgrade failed with exit code $($upgrade.ExitCode)." }
+
+          try { $oldMain.Refresh() } catch { }
+          if (-not $oldMain.HasExited) {
+            Stop-Process -Id $oldMain.Id -Force -ErrorAction SilentlyContinue
+            throw 'Installer did not terminate the old VideoShelf process before relaunch.'
+          }
+          try { $oldHost.Refresh() } catch { }
+          if (-not $oldHost.HasExited) {
+            Stop-Process -Id $oldHost.Id -Force -ErrorAction SilentlyContinue
+            throw 'Installer did not stop the old TransferHost before replacing its runtime.'
+          }
+          if (Test-Path (Join-Path $transferDir 'legacy-runtime-sentinel.txt')) { throw 'Old TransferHost contents survived the upgrade.' }
+
+          $expectedDll = Join-Path $env:VIDEOSHELF_RELEASE_PACKAGE 'TransferHost\VideoShelf.TransferHost.dll'
+          $expectedHash = (Get-FileHash $expectedDll -Algorithm SHA256).Hash
+          $installedHash = (Get-FileHash $transferDll -Algorithm SHA256).Hash
+          if ($installedHash -ne $expectedHash) { throw 'Installed TransferHost DLL does not match the v1.7.5 package.' }
+
+          $transferTest = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -WorkingDirectory $transferDir -Wait -PassThru
+          if ($transferTest.ExitCode -ne 0) { throw 'TransferHost self-test failed after v1.7.4 -> v1.7.5 upgrade.' }
+
+          $restarted = $null
+          $deadline = [DateTime]::UtcNow.AddSeconds(30)
+          while ([DateTime]::UtcNow -lt $deadline -and $null -eq $restarted) {
+            $restarted = Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
+              try { $_.Path -eq $mainExe -and $_.Id -ne $oldMain.Id } catch { $false }
+            } | Select-Object -First 1
+            if ($null -eq $restarted) { Start-Sleep -Milliseconds 500 }
+          }
+          if ($null -eq $restarted) { throw 'v1.7.4 -> v1.7.5 installed successfully but VideoShelf did not reopen.' }
+          Start-Sleep -Seconds 2
+          if ($restarted.HasExited) { throw 'Relaunched v1.7.5 exited immediately after upgrade.' }
+
+          Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -eq $mainExe } catch { $false } } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name 'VideoShelf.TransferHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Upgrade regression uninstall failed.' }
+
+      - name: Publish stable GitHub Release
+        shell: powershell
+        run: |
+          $notes = @'
+          ## VideoShelf v1.7.5
+
+          - Fixes the updater shutdown/relaunch sequence so the old VideoShelf instance is closed before installation and exactly one updated instance reopens afterward.
+          - Prevents the updater helper from being terminated with the parent application during handoff.
+          - Cleanly replaces the bundled TransferHost runtime during updates instead of mixing old assemblies with newer MonoTorrent files.
+          - Stops active TransferHost processes before runtime replacement, fixing the `EngineSettingsBuilder.set_ConnectionTimeout(...)` MissingMethodException seen after in-place updates.
+          - Adds regression coverage for upgrading directly from v1.7.4 while both VideoShelf and TransferHost are running.
+
+          This release was built from the approved source commit and passed application, TransferHost, clean-install, updater-relaunch, v1.7.4 upgrade and uninstall tests before publication.
+          '@
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes-v1.7.5.md'
+          Set-Content -Path $notesPath -Value $notes -Encoding UTF8
+          gh release create $env:RELEASE_TAG $env:VIDEOSHELF_RELEASE_INSTALLER --repo $env:GITHUB_REPOSITORY --title "VideoShelf v1.7.5" --target $env:RELEASE_SOURCE --notes-file $notesPath --latest
