@@ -173,7 +173,7 @@ static class UpdateService {
   script.AppendLine("@echo off");
   script.AppendLine("setlocal");
   script.AppendLine("powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command \"$p=Get-Process -Id "+pid+" -ErrorAction SilentlyContinue; if($p -and -not $p.WaitForExit(90000)){exit 2}\" >nul 2>&1");
-  script.AppendLine("if errorlevel 1 taskkill /F /T /PID "+pid+" >nul 2>&1");
+  script.AppendLine("if errorlevel 1 taskkill /F /PID "+pid+" >nul 2>&1");
   script.AppendLine("ping 127.0.0.1 -n 2 >nul");
   script.AppendLine("taskkill /F /T /IM VideoShelf.TransferHost.exe >nul 2>&1");
   script.AppendLine("ping 127.0.0.1 -n 2 >nul");
@@ -194,7 +194,7 @@ static class UpdateService {
   var info=BuildUpdateInfo(release);if(info==null||info.VersionText!="1.8.0"||info.Sha256!=new string('b',64))throw new InvalidOperationException("Update release parsing self-test failed.");
   release.prerelease=true;if(BuildUpdateInfo(release)!=null)throw new InvalidOperationException("Prerelease update filtering self-test failed.");
   string helper=BuildInstallerHelperScript(@"C:\Program Files\VideoShelf Setup.exe",@"C:\Users\Test\VideoShelf.exe",4321);
-  if(!helper.Contains("Get-Process -Id 4321")||!helper.Contains("WaitForExit(90000)")||!helper.Contains("taskkill /F /T /PID 4321")||!helper.Contains("VideoShelf.TransferHost.exe")||!helper.Contains("/VIDEOSHELFUPDATE=1")||!helper.Contains(@"C:\Users\Test\VideoShelf.exe"))throw new InvalidOperationException("Update handoff helper self-test failed.");
+  if(!helper.Contains("Get-Process -Id 4321")||!helper.Contains("WaitForExit(90000)")||!helper.Contains("taskkill /F /PID 4321")||!helper.Contains("VideoShelf.TransferHost.exe")||!helper.Contains("/VIDEOSHELFUPDATE=1")||!helper.Contains(@"C:\Users\Test\VideoShelf.exe"))throw new InvalidOperationException("Update handoff helper self-test failed.");
  }
 }
 }
