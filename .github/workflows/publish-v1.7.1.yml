@@ -69,7 +69,7 @@ jobs:
           $parts = @($env:VIDEOSHELF_VERSION.Split('.'))
           while ($parts.Count -lt 4) { $parts += '0' }
           $fileVersion = ($parts[0..3] -join '.')
-          $issPath = Join-Path $env:RUNNER_TEMP 'VideoShelf.release.iss'
+          $issPath = '.\installer\VideoShelf.publish-v1.7.1.iss'
           $iss = Get-Content '.\installer\VideoShelf.iss' -Raw
           $iss = [regex]::Replace($iss, '(?m)^OutputBaseFilename=.*$', "OutputBaseFilename=VideoShelf-Setup-v$env:VIDEOSHELF_VERSION")
           $iss = [regex]::Replace($iss, '(?m)^VersionInfoVersion=.*$', "VersionInfoVersion=$fileVersion")
