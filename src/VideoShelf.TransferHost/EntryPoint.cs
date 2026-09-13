@@ -36,7 +36,10 @@ internal static class EntryPoint
                 var values = Arguments.Parse(args.Skip(1).ToArray());
                 string source = values.Required("source");
                 string? page = values.Get("page");
-                string resolved = TransferSourceResolver.ResolveAsync(source, page, CancellationToken.None).GetAwaiter().GetResult();
+                string originalSource = source;
+                string resolved = command == "stream"
+                    ? TransferSourceResolver.ResolveForStreamingAsync(source, page, CancellationToken.None).GetAwaiter().GetResult()
+                    : TransferSourceResolver.ResolveAsync(source, page, CancellationToken.None).GetAwaiter().GetResult();
                 if (string.IsNullOrWhiteSpace(resolved)) throw new InvalidOperationException("This result does not contain usable torrent metadata.");
                 string title = values.Get("title") ?? "Torrent";
 
@@ -49,8 +52,12 @@ internal static class EntryPoint
 
                 if (command == "stream")
                 {
+                    string? fallback = !resolved.Equals(originalSource, StringComparison.OrdinalIgnoreCase) &&
+                                       originalSource.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase)
+                        ? originalSource
+                        : null;
                     ApplicationConfiguration.Initialize();
-                    using var form = new OptimizedStreamForm(resolved, title);
+                    using var form = new OptimizedStreamForm(resolved, title, fallback);
                     using var fullScreen = FullscreenPlayerController.Attach(form);
                     Application.Run(form);
                     return;
