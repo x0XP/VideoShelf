@@ -12,6 +12,7 @@ namespace VideoShelf.TransferHost;
 internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
 {
     const int MaxMetadataBytes = 16 * 1024 * 1024;
+    static readonly TimeSpan SessionStopTimeout = TimeSpan.FromSeconds(2);
     static readonly HttpClient Http = CreateHttp();
     readonly string stateRoot;
     readonly string temporaryRoot;
@@ -39,7 +40,6 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
             HttpStreamingPrefix = httpPrefix,
             MaximumConnections = 300,
             MaximumHalfOpenConnections = 32,
-            ConnectionTimeout = TimeSpan.FromSeconds(8),
             DiskCacheBytes = 32 * 1024 * 1024,
             MaximumDownloadRate = 0
         };
@@ -116,7 +116,15 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Manager != null) try { await Manager.StopAsync(); } catch { }
+        if (Manager != null)
+        {
+            try
+            {
+                using var deadline = new CancellationTokenSource(SessionStopTimeout + TimeSpan.FromSeconds(1));
+                await Manager.StopAsync(SessionStopTimeout).WaitAsync(deadline.Token);
+            }
+            catch { }
+        }
         Engine.Dispose();
         if (metadataFile != null) try { File.Delete(metadataFile); } catch { }
     }
@@ -138,6 +146,8 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
                 throw new InvalidOperationException("Streaming fast-resume must stay disabled because video payloads are temporary.");
             if (!Path.GetFullPath(session.Engine.Settings.CacheDirectory).Equals(Path.GetFullPath(state), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Streaming discovery state is not using the persistent cache path.");
+            if (SessionStopTimeout > TimeSpan.FromSeconds(3))
+                throw new InvalidOperationException("Streaming session shutdown must remain bounded.");
             if (OptimizedStreamForm.CalculatePrebufferBytes(1024L * 1024 * 1024) < 8L * 1024 * 1024)
                 throw new InvalidOperationException("Streaming prebuffer target is too small.");
         }
@@ -150,6 +160,7 @@ internal sealed class OptimizedStreamForm : Form
     static readonly HashSet<string> Playable = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".vob" };
     static readonly TimeSpan InitialMetadataWait = TimeSpan.FromSeconds(20);
     static readonly TimeSpan RetryMetadataWait = TimeSpan.FromSeconds(30);
+    static readonly TimeSpan MetadataRetryStopTimeout = TimeSpan.FromSeconds(2);
     readonly string source;
     readonly string releaseTitle;
     readonly bool fixtureMode;
@@ -286,7 +297,7 @@ internal sealed class OptimizedStreamForm : Form
             {
                 status.Text = "Retrying torrent metadata discovery…";
                 videoOverlay.Text = "Metadata is taking longer than expected…\n\nRetrying peer discovery";
-                await torrentManager.StopAsync();
+                await StopForMetadataRetryAsync(torrentManager, cts.Token);
                 await Task.Delay(350, cts.Token);
                 await torrentManager.StartAsync();
                 if (!await WaitForMetadataWithTimeoutAsync(torrentManager, RetryMetadataWait, cts.Token))
@@ -318,6 +329,18 @@ internal sealed class OptimizedStreamForm : Form
             video.Visible = false; videoOverlay.Visible = true; videoOverlay.Text = "Unable to start this stream"; status.Text = ex.Message;
             MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    static async Task StopForMetadataRetryAsync(TorrentManager torrentManager, CancellationToken token)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(MetadataRetryStopTimeout + TimeSpan.FromSeconds(1));
+        try
+        {
+            await torrentManager.StopAsync(MetadataRetryStopTimeout).WaitAsync(deadline.Token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+        catch when (!token.IsCancellationRequested) { }
     }
 
     static async Task<bool> WaitForMetadataWithTimeoutAsync(TorrentManager torrentManager, TimeSpan timeout, CancellationToken token)
@@ -437,7 +460,6 @@ internal sealed class OptimizedStreamForm : Form
     static async ValueTask DisposeObjectAsync(object value){try{if(value is IAsyncDisposable a)await a.DisposeAsync();else if(value is IDisposable d)d.Dispose();}catch{}}
     static string FormatTime(long ms){if(ms<0)ms=0;TimeSpan t=TimeSpan.FromMilliseconds(ms);return t.TotalHours>=1?t.ToString(@"h\:mm\:ss"):t.ToString(@"m\:ss");}
     static string FormatSize(long bytes)=>bytes>=1024L*1024*1024?$"{bytes/(1024d*1024d*1024d):0.0} GB":$"{bytes/(1024d*1024d):0.0} MB";
-
     async void OnClosing(object? sender, FormClosingEventArgs e)
     {
         if (closing || fixtureMode) return;
