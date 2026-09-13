@@ -27,7 +27,7 @@ static class Program {
   bool ownsInstance;
   using(var singleInstance=new Mutex(true,@"Local\VideoShelf-52B6117F-2222-49BB-935D-8C7FA18DC42B",out ownsInstance)){
    if(!ownsInstance)return;
-   Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);var shelf=new Shelf();shelf.InitializeUpdater();Application.Run(shelf);
+   Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);TransferBridge.WarmDiscovery();var shelf=new Shelf();shelf.FormClosed+=delegate{TransferBridge.StopDiscovery();};shelf.InitializeUpdater();Application.Run(shelf);
   }
  }
 }
