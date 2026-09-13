@@ -2,6 +2,8 @@ namespace VideoShelf.TransferHost;
 
 internal sealed class FullscreenPlayerController : IDisposable
 {
+    static readonly TimeSpan FullScreenControlsIdleTimeout = TimeSpan.FromSeconds(2.5);
+
     readonly Form form;
     readonly Panel topBar;
     readonly Panel bottomBar;
@@ -12,9 +14,12 @@ internal sealed class FullscreenPlayerController : IDisposable
     readonly PlayerIconButton playPause;
     readonly PlayerIconButton fullScreen;
     readonly ToolTip toolTip = new();
+    readonly System.Windows.Forms.Timer pointerIdleTimer = new() { Interval = 100 };
     FormBorderStyle savedBorderStyle;
     FormWindowState savedWindowState;
     Rectangle savedBounds;
+    Point lastPointerPosition;
+    DateTime lastPointerActivityUtc;
     bool savedTopMost;
     bool isFullScreen;
     bool disposed;
@@ -60,6 +65,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         fullScreen.Click += OnFullScreenClick;
         sourcePlayPause.TextChanged += OnSourcePlayPauseChanged;
         sourcePlayPause.EnabledChanged += OnSourcePlayPauseChanged;
+        pointerIdleTimer.Tick += OnPointerIdleTimerTick;
         HookDoubleClick(form);
         RelayoutControls();
     }
@@ -156,14 +162,18 @@ internal sealed class FullscreenPlayerController : IDisposable
         toolTip.SetToolTip(fullScreen, "Exit full screen");
         form.ResumeLayout(true);
         isFullScreen = true;
+        ResetPointerIdleTracking();
+        pointerIdleTimer.Start();
         RelayoutControls();
     }
 
     void ExitFullScreen()
     {
         if (!isFullScreen || disposed) return;
+        pointerIdleTimer.Stop();
         form.SuspendLayout();
         topBar.Visible = true;
+        bottomBar.Visible = true;
         form.TopMost = savedTopMost;
         form.FormBorderStyle = savedBorderStyle;
         form.WindowState = FormWindowState.Normal;
@@ -175,6 +185,33 @@ internal sealed class FullscreenPlayerController : IDisposable
         form.ResumeLayout(true);
         isFullScreen = false;
         RelayoutControls();
+    }
+
+    void ResetPointerIdleTracking()
+    {
+        lastPointerPosition = Cursor.Position;
+        lastPointerActivityUtc = DateTime.UtcNow;
+    }
+
+    void OnPointerIdleTimerTick(object? sender, EventArgs e)
+    {
+        if (!isFullScreen || disposed) return;
+
+        Point pointerPosition = Cursor.Position;
+        if (pointerPosition != lastPointerPosition)
+        {
+            lastPointerPosition = pointerPosition;
+            lastPointerActivityUtc = DateTime.UtcNow;
+            if (!bottomBar.Visible)
+            {
+                bottomBar.Visible = true;
+                RelayoutControls();
+            }
+            return;
+        }
+
+        if (bottomBar.Visible && DateTime.UtcNow - lastPointerActivityUtc >= FullScreenControlsIdleTimeout)
+            bottomBar.Visible = false;
     }
 
     void OnResize(object? sender, EventArgs e) => RelayoutControls();
@@ -205,6 +242,8 @@ internal sealed class FullscreenPlayerController : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        pointerIdleTimer.Stop();
+        pointerIdleTimer.Tick -= OnPointerIdleTimerTick;
         form.KeyDown -= OnKeyDown;
         form.Resize -= OnResize;
         form.FormClosed -= OnFormClosed;
@@ -213,6 +252,7 @@ internal sealed class FullscreenPlayerController : IDisposable
         sourcePlayPause.TextChanged -= OnSourcePlayPauseChanged;
         sourcePlayPause.EnabledChanged -= OnSourcePlayPauseChanged;
         UnhookDoubleClick(form);
+        pointerIdleTimer.Dispose();
         toolTip.Dispose();
         if (!playPause.IsDisposed) playPause.Dispose();
         if (!fullScreen.IsDisposed) fullScreen.Dispose();
