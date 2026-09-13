@@ -61,7 +61,7 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
 
     static HttpClient CreateHttp()
     {
-        var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(30) };
+        var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(8) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.7");
         return client;
     }
@@ -162,6 +162,7 @@ internal sealed class OptimizedStreamForm : Form
     static readonly TimeSpan RetryMetadataWait = TimeSpan.FromSeconds(30);
     static readonly TimeSpan MetadataRetryStopTimeout = TimeSpan.FromSeconds(2);
     readonly string source;
+    readonly string? fallbackSource;
     readonly string releaseTitle;
     readonly bool fixtureMode;
     readonly Panel videoHost = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
@@ -187,11 +188,14 @@ internal sealed class OptimizedStreamForm : Form
     int playbackRevision;
     bool closing;
 
-    public OptimizedStreamForm(string source, string title) : this(source, title, false) { }
+    public OptimizedStreamForm(string source, string title) : this(source, title, null, false) { }
+    internal OptimizedStreamForm(string source, string title, string? fallbackSource) : this(source, title, fallbackSource, false) { }
+    internal OptimizedStreamForm(string source, string title, bool fixtureMode) : this(source, title, null, fixtureMode) { }
 
-    internal OptimizedStreamForm(string source, string title, bool fixtureMode)
+    OptimizedStreamForm(string source, string title, string? fallbackSource, bool fixtureMode)
     {
         this.source = source;
+        this.fallbackSource = string.IsNullOrWhiteSpace(fallbackSource) ? null : fallbackSource;
         releaseTitle = string.IsNullOrWhiteSpace(title) ? "Torrent" : title;
         this.fixtureMode = fixtureMode;
         string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf");
@@ -287,7 +291,20 @@ internal sealed class OptimizedStreamForm : Form
             Directory.CreateDirectory(discoveryCache);
             var streamSession = new StreamingTorrentSession(discoveryCache, Path.Combine(cache, "metadata"));
             session = streamSession;
-            var torrentManager = await streamSession.AddAsync(source, cache, cts.Token);
+            TorrentManager torrentManager;
+            try
+            {
+                torrentManager = await streamSession.AddAsync(source, cache, cts.Token);
+            }
+            catch (Exception) when (!cts.IsCancellationRequested && fallbackSource != null)
+            {
+                status.Text = "Direct metadata unavailable • using peer discovery";
+                videoOverlay.Text = "Direct torrent metadata was unavailable…\n\nFalling back to peer discovery";
+                await streamSession.DisposeAsync();
+                streamSession = new StreamingTorrentSession(discoveryCache, Path.Combine(cache, "metadata-fallback"));
+                session = streamSession;
+                torrentManager = await streamSession.AddAsync(fallbackSource, cache, cts.Token);
+            }
             manager = torrentManager;
             bool metadataWasCached = torrentManager.HasMetadata;
             status.Text = metadataWasCached ? "Metadata cached • connecting" : "Connecting • retrieving metadata";
