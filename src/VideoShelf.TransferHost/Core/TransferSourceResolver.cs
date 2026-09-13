@@ -21,29 +21,35 @@ internal static class TransferSourceResolver
     }
 
     public static Task<string> ResolveAsync(string source, string? pageUrl, CancellationToken token)
-        => ResolveAsync(source, pageUrl, false, token);
+        => ResolveGeneralAsync(source, pageUrl, token);
 
-    public static Task<string> ResolveForStreamingAsync(string source, string? pageUrl, CancellationToken token)
-        => ResolveAsync(source, pageUrl, true, token);
+    public static async Task<string> ResolveForStreamingAsync(string source, string? pageUrl, CancellationToken token)
+    {
+        source = (source ?? string.Empty).Trim();
+        if (source.Length == 0) return source;
 
-    static async Task<string> ResolveAsync(string source, string? pageUrl, bool preferDirectMetadata, CancellationToken token)
+        // If the search result already supplied a valid magnet, keep it. The old
+        // optimization replaced magnets with guessed /download/{id}.torrent URLs,
+        // which can legitimately return 404 on mirrors even while the swarm works.
+        if (MagnetLink.TryParse(source, out MagnetLink? magnet) && magnet != null)
+            return source;
+
+        // Some feeds expose only a direct .torrent URL but also carry a details page.
+        // Prefer a magnet/info-hash recovered from that page so a stale direct URL
+        // cannot abort streaming before peer discovery has a chance to run.
+        string peerSource = await ResolvePeerSourceAsync(source, pageUrl, token).ConfigureAwait(false);
+        if (peerSource.Length > 0)
+            return peerSource;
+
+        return await ResolveGeneralAsync(source, pageUrl, token).ConfigureAwait(false);
+    }
+
+    static async Task<string> ResolveGeneralAsync(string source, string? pageUrl, CancellationToken token)
     {
         source = (source ?? string.Empty).Trim();
         if (source.Length == 0) return source;
 
         if (LooksLikeTorrentMetadata(source)) return source;
-
-        // Streaming can skip BEP9 entirely when a details URL has a deterministic
-        // direct torrent endpoint. Other commands keep the original source so this
-        // optimization cannot make downloads/file inspection less reliable.
-        if (preferDirectMetadata && !string.IsNullOrWhiteSpace(pageUrl))
-        {
-            string page = pageUrl.Trim();
-            string known = NormalizeKnownPage(page);
-            if (!known.Equals(page, StringComparison.OrdinalIgnoreCase) && LooksLikeTorrentMetadata(known))
-                return known;
-        }
-
         if (MagnetLink.TryParse(source, out MagnetLink? direct) && direct != null) return source;
 
         if (LooksLikePage(source))
@@ -78,6 +84,23 @@ internal static class TransferSourceResolver
                (path.Contains("/view/") || path.Contains("/details/") || path.Contains("/torrent/") || path.Contains("/description"));
     }
 
+    static async Task<string> ResolvePeerSourceAsync(string source, string? pageUrl, CancellationToken token)
+    {
+        if (!string.IsNullOrWhiteSpace(pageUrl))
+        {
+            string peer = await ResolvePeerPageAsync(pageUrl.Trim(), token).ConfigureAwait(false);
+            if (peer.Length > 0) return peer;
+        }
+
+        if (LooksLikePage(source))
+        {
+            string peer = await ResolvePeerPageAsync(source, token).ConfigureAwait(false);
+            if (peer.Length > 0) return peer;
+        }
+
+        return string.Empty;
+    }
+
     static async Task<string> ResolvePageAsync(string pageUrl, CancellationToken token)
     {
         if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out var page) ||
@@ -85,29 +108,49 @@ internal static class TransferSourceResolver
 
         try
         {
-            using var response = await Http.GetAsync(page, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return NormalizeKnownPage(pageUrl);
-            if (response.Content.Headers.ContentLength is long length && length > MaxPageBytes) return NormalizeKnownPage(pageUrl);
-
-            await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-            using var memory = new MemoryStream();
-            byte[] buffer = new byte[32768];
-            int total = 0;
-            while (true)
-            {
-                int read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
-                if (read == 0) break;
-                total += read;
-                if (total > MaxPageBytes) return NormalizeKnownPage(pageUrl);
-                memory.Write(buffer, 0, read);
-            }
-
-            string html = WebUtility.HtmlDecode(System.Text.Encoding.UTF8.GetString(memory.ToArray()));
+            string html = await ReadPageAsync(page, token).ConfigureAwait(false);
+            if (html.Length == 0) return NormalizeKnownPage(pageUrl);
             string resolved = ExtractTransferSource(html, page);
             return resolved.Length > 0 ? resolved : NormalizeKnownPage(pageUrl);
         }
         catch (OperationCanceledException) { throw; }
         catch { return NormalizeKnownPage(pageUrl); }
+    }
+
+    static async Task<string> ResolvePeerPageAsync(string pageUrl, CancellationToken token)
+    {
+        if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out var page) ||
+            (page.Scheme != Uri.UriSchemeHttp && page.Scheme != Uri.UriSchemeHttps)) return string.Empty;
+
+        try
+        {
+            string html = await ReadPageAsync(page, token).ConfigureAwait(false);
+            return html.Length == 0 ? string.Empty : ExtractPeerSource(html);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return string.Empty; }
+    }
+
+    static async Task<string> ReadPageAsync(Uri page, CancellationToken token)
+    {
+        using var response = await Http.GetAsync(page, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) return string.Empty;
+        if (response.Content.Headers.ContentLength is long length && length > MaxPageBytes) return string.Empty;
+
+        await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var memory = new MemoryStream();
+        byte[] buffer = new byte[32768];
+        int total = 0;
+        while (true)
+        {
+            int read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
+            if (read == 0) break;
+            total += read;
+            if (total > MaxPageBytes) return string.Empty;
+            memory.Write(buffer, 0, read);
+        }
+
+        return WebUtility.HtmlDecode(System.Text.Encoding.UTF8.GetString(memory.ToArray()));
     }
 
     internal static string ExtractTransferSource(string html, Uri page)
@@ -120,6 +163,14 @@ internal static class TransferSourceResolver
             string href = WebUtility.HtmlDecode(torrent.Groups["url"].Value);
             if (Uri.TryCreate(page, href, out var absolute)) return absolute.AbsoluteUri;
         }
+
+        string peer = ExtractPeerSource(html);
+        return peer;
+    }
+
+    internal static string ExtractPeerSource(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return string.Empty;
 
         Match magnet = Regex.Match(html, "magnet:\\?[^\\s\\\"'<>]+", RegexOptions.IgnoreCase);
         if (magnet.Success)
@@ -157,9 +208,14 @@ internal static class TransferSourceResolver
         string magnet = "magnet:?xt=urn:btih:" + hash + "&dn=VideoShelf";
         string directTorrent = "https://nyaa.example/download/12345.torrent";
         string mixed = "<a href=\"" + magnet.Replace("&", "&amp;") + "\">Magnet</a><a href=\"/download/12345.torrent\">Torrent</a>";
-        string preferred = ExtractTransferSource(mixed, page);
-        if (!preferred.Equals(directTorrent, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Direct torrent metadata was not preferred over magnet metadata discovery.");
+
+        string preferredForGeneralTransfer = ExtractTransferSource(mixed, page);
+        if (!preferredForGeneralTransfer.Equals(directTorrent, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("General transfer resolution stopped preferring explicit torrent metadata.");
+
+        string preferredForStreaming = ExtractPeerSource(WebUtility.HtmlDecode(mixed));
+        if (!preferredForStreaming.Equals(magnet, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Streaming peer fallback did not prefer the magnet source.");
 
         string fromMagnet = ExtractTransferSource("<a href=\"" + magnet.Replace("&", "&amp;") + "\">Magnet</a>", page);
         if (!fromMagnet.Equals(magnet, StringComparison.OrdinalIgnoreCase))
@@ -168,8 +224,9 @@ internal static class TransferSourceResolver
         string normal = ResolveAsync(magnet, page.AbsoluteUri, CancellationToken.None).GetAwaiter().GetResult();
         if (!normal.Equals(magnet, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Normal transfer resolution unexpectedly replaced a magnet source.");
+
         string streaming = ResolveForStreamingAsync(magnet, page.AbsoluteUri, CancellationToken.None).GetAwaiter().GetResult();
-        if (!streaming.Equals(directTorrent, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Streaming did not select deterministic direct torrent metadata.");
+        if (!streaming.Equals(magnet, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Streaming unexpectedly replaced a valid magnet with a direct metadata URL.");
     }
 }
