@@ -17,18 +17,21 @@ jobs:
         with:
           fetch-depth: 0
       - name: Harden DuckDuckGo thumbnail matching
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           path = Path('src/VideoShelf/Search/OnlineThumbnailLookup.cs')
           text = path.read_text(encoding='utf-8')
 
           old_queries = ''' static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series;}
- static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image";}'''
+           static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image";}'''
           new_queries = ''' static string QuotedSeries(string value){string s=(value??"").Replace("\\\""," ").Trim();return s.Length==0?s:"\\\""+s+"\\\"";}
- static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" screenshot":QuotedSeries(id.Series);}
- static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" still":QuotedSeries(id.Series)+" image";}'''
+           static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" screenshot":QuotedSeries(id.Series);}
+           static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?QuotedSeries(id.Series)+" "+id.EpisodeLabel+" still":QuotedSeries(id.Series)+" image";}'''
+          old_queries = old_queries.replace('\n           ', '\n ')
+          new_queries = new_queries.replace('\n           ', '\n ')
           if old_queries not in text:
               raise SystemExit('query builder block not found')
           text = text.replace(old_queries, new_queries)
@@ -97,6 +100,7 @@ jobs:
           text = text.replace(marker, addition)
 
           path.write_text(text, encoding='utf-8', newline='\n')
+          PY
       - name: Commit source change
         shell: bash
         run: |
