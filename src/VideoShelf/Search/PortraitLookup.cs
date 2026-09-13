@@ -29,7 +29,7 @@ static class PortraitLookup {
  static string FileFor(string name){return Path.Combine(cache,Key(name)+".jpg");}
  static string PrimaryQuery(string name){return (name??"").Trim();}
  public static string SearchUrl(string name){return SearchUrlFor(PrimaryQuery(name));}
- static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=1";}
+ static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
  public static void Forget(string name){string f=FileFor(name);if(File.Exists(f))File.Delete(f);if(File.Exists(f+".source"))File.Delete(f+".source");}
  static Image Decode(byte[] bytes){using(var ms=new MemoryStream(bytes))using(var im=Image.FromStream(ms,true,true)){if((long)im.Width*im.Height>16000000||im.Width<40||im.Height<40)throw new InvalidDataException("Unsuitable image dimensions.");double scale=Math.Min(1,400.0/Math.Max(im.Width,im.Height));return new Bitmap(im,Math.Max(1,(int)(im.Width*scale)),Math.Max(1,(int)(im.Height*scale)));}}
  public static void Store(string name,Image photo,string source){Directory.CreateDirectory(cache);string f=FileFor(name),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";try{photo.Save(temp,ImageFormat.Jpeg);if(File.Exists(f))File.Delete(f);File.Move(temp,f);File.WriteAllText(f+".source",source);}finally{if(File.Exists(temp))File.Delete(temp);}}
@@ -52,7 +52,7 @@ static class PortraitLookup {
   if(html.IndexOf("anomaly.js",StringComparison.OrdinalIgnoreCase)>=0||html.IndexOf("challenge-form",StringComparison.OrdinalIgnoreCase)>=0)throw new LookupBlockedException("DuckDuckGo needs a browser check. Use Search images from the card menu.");
   Match token=Regex.Match(html,"vqd=['\"](?<token>[0-9-]+)['\"]");
   if(!token.Success)throw new InvalidDataException("DuckDuckGo did not provide image search data.");
-  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=1";
+  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=1&kp=-2";
   string json=Encoding.UTF8.GetString(await Get(endpoint,2*1024*1024,ct).ConfigureAwait(false));
   var payload=new JavaScriptSerializer{MaxJsonLength=2*1024*1024}.Deserialize<Dictionary<string,object>>(json);
   object rows;if(payload==null||!payload.TryGetValue("results",out rows))return null;

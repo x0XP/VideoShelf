@@ -100,7 +100,7 @@ static class OnlineThumbnailLookup {
  }
 
  static string FileFor(string title){return Path.Combine(cache,CacheKey(title)+".jpg");}
- static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=1";}
+ static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
  public static string SearchUrl(string title){return SearchUrlFor(SearchText(title));}
 
  static async Task<byte[]> Get(string url,int limit,CancellationToken ct){
@@ -168,7 +168,7 @@ static class OnlineThumbnailLookup {
   if(html.IndexOf("anomaly.js",StringComparison.OrdinalIgnoreCase)>=0||html.IndexOf("challenge-form",StringComparison.OrdinalIgnoreCase)>=0)throw new LookupBlockedException("DuckDuckGo needs a browser check before more thumbnails can be fetched.");
   Match token=Regex.Match(html,"vqd=['\"](?<token>[0-9-]+)['\"]");
   if(!token.Success)throw new InvalidDataException("DuckDuckGo did not provide image search data.");
-  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=1";
+  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=1&kp=-2";
   string json=Encoding.UTF8.GetString(await Get(endpoint,2*1024*1024,ct).ConfigureAwait(false));
   var payload=new JavaScriptSerializer{MaxJsonLength=2*1024*1024}.Deserialize<Dictionary<string,object>>(json);
   object rows;if(payload==null||!payload.TryGetValue("results",out rows))return new List<Dictionary<string,object>>();
