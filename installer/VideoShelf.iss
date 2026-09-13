@@ -5,7 +5,7 @@
   #define OutputDir ".\output"
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.7.0"
+  #define AppVersion "1.7.2"
 #endif
 
 #define AppName "VideoShelf"
@@ -32,7 +32,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir={#OutputDir}
-OutputBaseFilename=VideoShelf-Setup-v1.7
+OutputBaseFilename=VideoShelf-Setup-v{#AppVersion}
 SetupIconFile={#SourceDir}\VideoShelf.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -43,7 +43,7 @@ CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName} {#AppVersion}
-VersionInfoVersion=1.7.0.0
+VersionInfoVersion={#AppVersion}.0
 VersionInfoCompany={#Publisher}
 VersionInfoDescription={#AppName} Windows Installer
 VersionInfoProductName={#AppName}
@@ -53,7 +53,7 @@ VersionInfoProductVersion={#AppVersion}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "Create an &desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\VideoShelf.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -68,6 +68,7 @@ Name: "{autodesktop}\VideoShelf"; Filename: "{app}\VideoShelf.exe"; WorkingDir: 
 
 [Run]
 Filename: "{app}\VideoShelf.exe"; Description: "Launch VideoShelf"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\VideoShelf.exe"; WorkingDir: "{app}"; Flags: nowait; Check: ShouldRelaunchAfterUpdate
 
 [Code]
 const
@@ -100,6 +101,7 @@ var
   ReadySummary: TNewMemo;
   ProgressTrack: TPanel;
   ProgressFill: TPanel;
+  ExistingInstallBeforeSetup: Boolean;
 
 function SetWindowTheme(hwnd: HWND; pszSubAppName, pszSubIdList: String): Integer;
   external 'SetWindowTheme@uxtheme.dll stdcall';
@@ -515,6 +517,18 @@ begin
     Result := ReleaseValue >= DotNet48Release;
   if (not Result) and RegQueryDWordValue(HKLM32, 'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full', 'Release', ReleaseValue) then
     Result := ReleaseValue >= DotNet48Release;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  ExistingInstallBeforeSetup := FileExists(ExpandConstant('{app}\{#AppExeName}'));
+  Result := '';
+end;
+
+function ShouldRelaunchAfterUpdate(): Boolean;
+begin
+  Result := (ExpandConstant('{param:VideoShelfUpdate|0}') = '1') or
+    (WizardSilent and ExistingInstallBeforeSetup);
 end;
 
 function InitializeSetup(): Boolean;
