@@ -1,0 +1,189 @@
+name: Improve thumbnail context
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/improve-thumbnail-context.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply contextual thumbnail lookup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/VideoShelf/Search/OnlineThumbnailLookup.cs')
+          s = p.read_text(encoding='utf-8')
+
+          old = ''' static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series;}
+ static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image";}
+ public static string SearchText(string title){return PrimaryQuery(Identify(title));}
+
+ public static string CacheKey(string title){
+  string key="v2|"+Identify(title).CacheIdentity;
+  using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
+ }
+
+ static string FileFor(string title){return Path.Combine(cache,CacheKey(title)+".jpg");}
+ static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
+ public static string SearchUrl(string title){return SearchUrlFor(SearchText(title));}
+'''
+          new = ''' static string CleanContext(string context){string s=Regex.Replace((context??"").Trim(),@"\\s+"," ");return s.Length>120?s.Substring(0,120).Trim():s;}
+ static string ContextPrefix(string context){string s=CleanContext(context).Replace("\\\""," ").Trim();return s.Length==0?"":"\\\""+s+"\\\" ";}
+ static bool ContextAlreadyPresent(ThumbnailIdentity id,string context){string c=NormalizedWords(CleanContext(context)),series=NormalizedWords(id.Series);return c.Length>0&&series.Contains(c);}
+ static string PrimaryQuery(ThumbnailIdentity id,string context){string prefix=ContextAlreadyPresent(id,context)?"":ContextPrefix(context);return prefix+(id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series);}
+ static string SecondaryQuery(ThumbnailIdentity id,string context){string prefix=ContextAlreadyPresent(id,context)?"":ContextPrefix(context);return prefix+(id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image");}
+ static string PrimaryQuery(ThumbnailIdentity id){return PrimaryQuery(id,"");}
+ static string SecondaryQuery(ThumbnailIdentity id){return SecondaryQuery(id,"");}
+ public static string SearchText(string title){return PrimaryQuery(Identify(title));}
+ public static string SearchText(string title,string context){return PrimaryQuery(Identify(title),context);}
+
+ public static string CacheKey(string title){return CacheKey(title,"");}
+ public static string CacheKey(string title,string context){
+  string key="v4|"+NormalizedWords(CleanContext(context))+"|"+Identify(title).CacheIdentity;
+  using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
+ }
+
+ static string FileFor(string title,string context){return Path.Combine(cache,CacheKey(title,context)+".jpg");}
+ static string ForceSafeOff(string query){string q=(query??"").Trim();return q.IndexOf("!safeoff",StringComparison.OrdinalIgnoreCase)>=0?q:q+" !safeoff";}
+ static string SearchUrlFor(string query){query=ForceSafeOff(query);return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
+ public static string SearchUrl(string title){return SearchUrlFor(SearchText(title));}
+ public static string SearchUrl(string title,string context){return SearchUrlFor(SearchText(title,context));}
+'''
+          if old not in s:
+              raise SystemExit('query/cache block not found')
+          s = s.replace(old, new)
+
+          old = ''' static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id){
+  string title=Value(row,"title"),url=Value(row,"url"),image=Value(row,"image");
+  string combined=title+" "+url+" "+image;
+  string normalized=NormalizedWords(combined);
+  string[] words=SignificantWords(id.Series);int matched=0;
+  foreach(string word in words)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)matched++;
+  int minimum=words.Length<=1?words.Length:Math.Min(2,words.Length);
+  if(matched<minimum)return int.MinValue;
+  if(id.Episodic&&!ContainsEpisodeReference(combined,id))return int.MinValue;
+  int score=matched*5;
+'''
+          new = ''' static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id,string context){
+  string title=Value(row,"title"),url=Value(row,"url"),image=Value(row,"image");
+  string combined=title+" "+url+" "+image;
+  string normalized=NormalizedWords(combined);
+  string[] words=SignificantWords(id.Series);int matched=0;
+  foreach(string word in words)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)matched++;
+  int minimum=words.Length<=1?words.Length:Math.Min(2,words.Length);
+  if(matched<minimum)return int.MinValue;
+  if(id.Episodic&&!ContainsEpisodeReference(combined,id))return int.MinValue;
+  int score=matched*5;
+  string cleanContext=CleanContext(context),contextPhrase=NormalizedWords(cleanContext);
+  if(contextPhrase.Length>0){
+   string[] contextWords=SignificantWords(cleanContext);int contextMatched=0;
+   foreach(string word in contextWords)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)contextMatched++;
+   score+=contextMatched*12;if(normalized.Contains(contextPhrase))score+=24;
+  }
+'''
+          if old not in s:
+              raise SystemExit('candidate score block not found')
+          s = s.replace(old, new)
+
+          old = ''' static async Task<List<Dictionary<string,object>>> SearchRows(string query,CancellationToken ct){
+  string html=Encoding.UTF8.GetString(await Get(SearchUrlFor(query),2*1024*1024,ct).ConfigureAwait(false));
+'''
+          new = ''' static async Task<List<Dictionary<string,object>>> SearchRows(string query,CancellationToken ct){
+  string effectiveQuery=ForceSafeOff(query);
+  string html=Encoding.UTF8.GetString(await Get(SearchUrlFor(effectiveQuery),2*1024*1024,ct).ConfigureAwait(false));
+'''
+          if old not in s:
+              raise SystemExit('search rows block not found')
+          s = s.replace(old, new)
+          s = s.replace('Uri.EscapeDataString(query)+"&vqd="', 'Uri.EscapeDataString(effectiveQuery)+"&vqd="', 1)
+
+          old = ''' static void Store(string title,Image image,string source){
+  Directory.CreateDirectory(cache);string f=FileFor(title),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
+'''
+          new = ''' static void Store(string title,string context,Image image,string source){
+  Directory.CreateDirectory(cache);string f=FileFor(title,context),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
+'''
+          if old not in s:
+              raise SystemExit('store block not found')
+          s = s.replace(old, new)
+
+          old = ''' static async Task<OnlineThumbnailResult> FindFromQuery(string title,ThumbnailIdentity id,string query,CancellationToken ct){
+  List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);
+  var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
+'''
+          new = ''' static async Task<OnlineThumbnailResult> FindFromQuery(string title,string context,ThumbnailIdentity id,string query,CancellationToken ct){
+  List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);
+  var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id,context)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
+'''
+          if old not in s:
+              raise SystemExit('find query block not found')
+          s = s.replace(old, new)
+          s = s.replace('try{Store(title,framed,source);}catch{}', 'try{Store(title,context,framed,source);}catch{}', 1)
+
+          old = ''' public static async Task<OnlineThumbnailResult> Find(string title,CancellationToken ct){
+  await gate.WaitAsync(ct).ConfigureAwait(false);
+  try{
+   ct.ThrowIfCancellationRequested();string f=FileFor(title);
+'''
+          new = ''' public static Task<OnlineThumbnailResult> Find(string title,CancellationToken ct){return Find(title,"",ct);}
+ public static async Task<OnlineThumbnailResult> Find(string title,string context,CancellationToken ct){
+  await gate.WaitAsync(ct).ConfigureAwait(false);
+  try{
+   context=CleanContext(context);ct.ThrowIfCancellationRequested();string f=FileFor(title,context);
+'''
+          if old not in s:
+              raise SystemExit('find entry block not found')
+          s = s.replace(old, new)
+          s = s.replace('FindFromQuery(title,id,PrimaryQuery(id),ct)', 'FindFromQuery(title,context,id,PrimaryQuery(id,context),ct)')
+          s = s.replace('FindFromQuery(title,id,SecondaryQuery(id),ct)', 'FindFromQuery(title,context,id,SecondaryQuery(id,context),ct)')
+
+          marker = '''  string tv=SearchText("Example.Show.S02E07.1080p.WEB-DL.x265.mkv");
+  if(tv.IndexOf("season 2 episode 7",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("TV episode thumbnail query lost its season/episode identity.");
+'''
+          add = marker + '''  string contextual=SearchText("Sample.Release.1080p.mkv","Sample Subject");
+  if(contextual.IndexOf("Sample Subject",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("Search context was not preserved for thumbnail lookup.");
+  if(CacheKey("Sample.Release.1080p.mkv","Sample Subject")==CacheKey("Sample.Release.1080p.mkv","Different Subject"))throw new InvalidOperationException("Contextual thumbnail cache keys collided.");
+  if(ForceSafeOff("sample query").IndexOf("!safeoff",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("Safe Search override token is missing.");
+'''
+          if marker not in s:
+              raise SystemExit('self-test marker not found')
+          s = s.replace(marker, add)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('src/VideoShelf/UI/Shelf/Shelf.Online.cs')
+          s = p.read_text(encoding='utf-8')
+          old = ''' async void StartThumbnailLoading(IEnumerable<OnlineResult> displayed){
+  if(thumbnailsLoading||thumbnailsPaused||onlineSearching||section!=ShellSection.Search||IsDisposed)return;var pending=displayed.Where(r=>r.Seeders>0).GroupBy(r=>OnlineThumbnailLookup.CacheKey(r.Title),StringComparer.OrdinalIgnoreCase).Select(g=>g.First()).Where(r=>!thumbnailAttempted.Contains(OnlineThumbnailLookup.CacheKey(r.Title))).Take(40).ToArray();if(pending.Length==0)return;
+'''
+          new = ''' async void StartThumbnailLoading(IEnumerable<OnlineResult> displayed){
+  if(thumbnailsLoading||thumbnailsPaused||onlineSearching||section!=ShellSection.Search||IsDisposed)return;string thumbnailContext=onlineQueryFor;var pending=displayed.Where(r=>r.Seeders>0).GroupBy(r=>OnlineThumbnailLookup.CacheKey(r.Title,thumbnailContext),StringComparer.OrdinalIgnoreCase).Select(g=>g.First()).Where(r=>!thumbnailAttempted.Contains(OnlineThumbnailLookup.CacheKey(r.Title,thumbnailContext))).Take(40).ToArray();if(pending.Length==0)return;
+'''
+          if old not in s:
+              raise SystemExit('thumbnail loader header not found')
+          s = s.replace(old, new)
+          s = s.replace('OnlineThumbnailLookup.CacheKey(row.Title)', 'OnlineThumbnailLookup.CacheKey(row.Title,thumbnailContext)')
+          s = s.replace('OnlineThumbnailLookup.Find(row.Title,ct)', 'OnlineThumbnailLookup.Find(row.Title,thumbnailContext,ct)')
+          s = s.replace('OnlineThumbnailLookup.CacheKey(x.Title)==key', 'OnlineThumbnailLookup.CacheKey(x.Title,thumbnailContext)==key')
+          s = s.replace('OnlineThumbnailLookup.CacheKey(c.Result.Title)==key', 'OnlineThumbnailLookup.CacheKey(c.Result.Title,thumbnailContext)==key')
+          s = s.replace('OnlineThumbnailLookup.CacheKey(selectedOnline.Title)==key', 'OnlineThumbnailLookup.CacheKey(selectedOnline.Title,thumbnailContext)==key')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit source update
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/VideoShelf/Search/OnlineThumbnailLookup.cs src/VideoShelf/UI/Shelf/Shelf.Online.cs
+          git commit -m 'Use search context for thumbnail lookups'
+          git push
