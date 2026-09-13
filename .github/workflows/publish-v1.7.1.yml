@@ -1,0 +1,127 @@
+name: Publish approved v1.7.1
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/publish-v1.7.1.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-approved-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify approved version
+        shell: powershell
+        run: |
+          $source = Get-Content '.\src\VideoShelf\Application\AppVersion.cs' -Raw
+          $match = [regex]::Match($source, 'Current\s*=\s*"([0-9]+(?:\.[0-9]+){1,3})"')
+          if (-not $match.Success) { throw 'Could not resolve AppVersion.Current.' }
+          $version = $match.Groups[1].Value
+          if ($version -ne '1.7.1') { throw "This one-shot workflow is approved only for 1.7.1; found $version." }
+          "VIDEOSHELF_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build and self-test VideoShelf
+        shell: cmd
+        run: |
+          Start.cmd --build-only
+          VideoShelf.exe --self-test
+
+      - name: Publish and test transfer runtime
+        shell: powershell
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'VideoShelf-release-package'
+          $transferDir = Join-Path $package 'TransferHost'
+          New-Item -ItemType Directory -Force -Path $transferDir | Out-Null
+          dotnet publish '.\src\VideoShelf.TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
+          if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
+          Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
+          Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
+          Copy-Item '.\VideoShelf.png' (Join-Path $package 'VideoShelf.png')
+          $runtimeTest = Start-Process -FilePath (Join-Path $transferDir 'VideoShelf.TransferHost.exe') -ArgumentList '--self-test' -Wait -PassThru
+          if ($runtimeTest.ExitCode -ne 0) { throw "TransferHost self-test failed with exit code $($runtimeTest.ExitCode)." }
+          "VIDEOSHELF_RELEASE_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build versioned installer
+        shell: powershell
+        run: |
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+            $iscc = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'ISCC.exe was not found.' }
+
+          $parts = @($env:VIDEOSHELF_VERSION.Split('.'))
+          while ($parts.Count -lt 4) { $parts += '0' }
+          $fileVersion = ($parts[0..3] -join '.')
+          $issPath = Join-Path $env:RUNNER_TEMP 'VideoShelf.release.iss'
+          $iss = Get-Content '.\installer\VideoShelf.iss' -Raw
+          $iss = [regex]::Replace($iss, '(?m)^OutputBaseFilename=.*$', "OutputBaseFilename=VideoShelf-Setup-v$env:VIDEOSHELF_VERSION")
+          $iss = [regex]::Replace($iss, '(?m)^VersionInfoVersion=.*$', "VersionInfoVersion=$fileVersion")
+          Set-Content -Path $issPath -Value $iss -Encoding UTF8
+
+          $out = Join-Path $env:RUNNER_TEMP 'VideoShelf-release-v1.7.1'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          & $iscc "/DSourceDir=$env:VIDEOSHELF_RELEASE_PACKAGE" "/DOutputDir=$out" "/DAppVersion=$env:VIDEOSHELF_VERSION" $issPath
+          if ($LASTEXITCODE -ne 0) { throw 'Release installer compilation failed.' }
+          $installer = Join-Path $out ("VideoShelf-Setup-v{0}.exe" -f $env:VIDEOSHELF_VERSION)
+          if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1000000) { throw 'Release installer was not created correctly.' }
+          $hash = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($installer))" | Set-Content -Path ($installer + '.sha256') -Encoding ASCII
+          "VIDEOSHELF_RELEASE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VIDEOSHELF_RELEASE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Test exact release installer
+        shell: powershell
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-v1.7.1-install-test'
+          $install = Start-Process -FilePath $env:VIDEOSHELF_RELEASE_INSTALLER -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $installDir + '"')) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)." }
+          $mainExe = Join-Path $installDir 'VideoShelf.exe'
+          $transferExe = Join-Path $installDir 'TransferHost\VideoShelf.TransferHost.exe'
+          if (!(Test-Path $mainExe) -or !(Test-Path $transferExe)) { throw 'Installed release is incomplete.' }
+          $mainTest = Start-Process -FilePath $mainExe -ArgumentList '--self-test' -WorkingDirectory $installDir -Wait -PassThru
+          $transferTest = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -WorkingDirectory (Split-Path $transferExe) -Wait -PassThru
+          if ($mainTest.ExitCode -ne 0 -or $transferTest.ExitCode -ne 0) { throw 'Installed release self-test failed.' }
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          if (!(Test-Path $uninstaller)) { throw 'Release uninstaller was not created.' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Release uninstall test failed.' }
+
+      - name: Publish approved GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (gh release view 'v1.7.1' --repo $env:GITHUB_REPOSITORY 2>$null) { throw 'Release v1.7.1 already exists.' }
+          $notes = @"
+          ## VideoShelf v1.7.1
+
+          First stable release using VideoShelf's built-in update system.
+
+          - Adds automatic stable-release update checks on startup.
+          - Adds manual update checks in Settings.
+          - Verifies GitHub's SHA-256 release-asset digest before launching an update.
+          - Downloads and installs approved updates, then restarts VideoShelf.
+          - Drafts, prereleases and ordinary main-branch builds are ignored by the updater.
+
+          This release was built, installed, self-tested and uninstalled successfully before publication.
+          "@
+          gh release create 'v1.7.1' $env:VIDEOSHELF_RELEASE_INSTALLER --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'VideoShelf v1.7.1' --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }
+          Write-Host "Published v1.7.1. Installer SHA-256: $env:VIDEOSHELF_RELEASE_SHA256"
