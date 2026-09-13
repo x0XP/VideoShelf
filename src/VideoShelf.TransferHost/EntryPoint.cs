@@ -6,6 +6,29 @@ internal static class EntryPoint
     static void Main(string[] args)
     {
         string command = args.FirstOrDefault()?.ToLowerInvariant() ?? "";
+
+        if (command == "warm")
+        {
+            try { TorrentDiscovery.WarmAsync(CancellationToken.None).GetAwaiter().GetResult(); }
+            catch { Environment.ExitCode = 2; }
+            return;
+        }
+
+        if (command == "prefetch")
+        {
+            try
+            {
+                var values = Arguments.Parse(args.Skip(1).ToArray());
+                string source = values.Required("source");
+                string? page = values.Get("page");
+                string resolved = TransferSourceResolver.ResolveAsync(source, page, CancellationToken.None).GetAwaiter().GetResult();
+                if (!string.IsNullOrWhiteSpace(resolved))
+                    TorrentDiscovery.PrefetchAsync(resolved, CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch { Environment.ExitCode = 2; }
+            return;
+        }
+
         if (command == "files" || command == "download" || command == "stream")
         {
             try
