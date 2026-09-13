@@ -3,7 +3,7 @@ using System.Globalization;
 
 namespace VideoShelf {
 static class AppVersion {
- public const string Current="1.7.7";
+ public const string Current="1.7.8";
  public static string Display { get { var v=Parse(Current);return v.Build>0?v.Major+"."+v.Minor+"."+v.Build:v.Major+"."+v.Minor; } }
  public static string UserAgent { get { return "VideoShelf/"+Current; } }
  public static Version Parsed { get { return Parse(Current); }
@@ -26,7 +26,7 @@ static class AppVersion {
   return string.Format(CultureInfo.InvariantCulture,"{0}.{1}",v.Major,v.Minor);
  }
  public static void SelfTest(){
-  if(!IsNewer("v1.7.8")||!IsNewer("2.0.0")||IsNewer("1.7.7")||IsNewer("1.7.6"))throw new InvalidOperationException("Application version comparison self-test failed.");
+  if(!IsNewer("v1.7.9")||!IsNewer("2.0.0")||IsNewer("1.7.8")||IsNewer("1.7.7"))throw new InvalidOperationException("Application version comparison self-test failed.");
   if(Normalize("v1.8.0")!="1.8.0")throw new InvalidOperationException("Application version normalization self-test failed.");
  }
 }
