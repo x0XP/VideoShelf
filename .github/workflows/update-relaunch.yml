@@ -126,7 +126,7 @@ jobs:
           $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw 'Uninstall after updater handoff failed.' }
 
-      - name: Prove legacy runtime is replaced as a clean unit
+      - name: Prove legacy runtime and app are cleanly replaced
         shell: powershell
         run: |
           $legacyInstaller = Join-Path $env:RUNNER_TEMP 'VideoShelf-Setup-v1.7.3.exe'
@@ -146,8 +146,15 @@ jobs:
           $transferDir = Join-Path $installDir 'TransferHost'
           $transferExe = Join-Path $transferDir 'VideoShelf.TransferHost.exe'
           $transferDll = Join-Path $transferDir 'VideoShelf.TransferHost.dll'
-          if (!(Test-Path $transferExe) -or !(Test-Path $transferDll)) { throw 'Legacy transfer runtime was not installed.' }
+          if (!(Test-Path $mainExe) -or !(Test-Path $transferExe) -or !(Test-Path $transferDll)) { throw 'Legacy VideoShelf installation was incomplete.' }
           'must disappear during clean runtime replacement' | Set-Content -Path (Join-Path $transferDir 'legacy-runtime-sentinel.txt') -Encoding ASCII
+
+          # Keep both the old main app and old transfer runtime alive. This recreates the
+          # conditions which previously allowed the updater to race the old process/mutex
+          # and to leave an old TransferHost DLL beside a new MonoTorrent runtime.
+          $legacyMain = Start-Process -FilePath $mainExe -WorkingDirectory $installDir -PassThru
+          Start-Sleep -Seconds 2
+          if ($legacyMain.HasExited) { throw 'Legacy VideoShelf did not remain running long enough to test update relaunch compatibility.' }
 
           $legacyHost = Start-Process -FilePath $transferExe -ArgumentList @(
             'stream','--source','magnet:?xt=urn:btih:0123456789012345678901234567890123456789','--title','LegacyLock'
@@ -156,10 +163,16 @@ jobs:
           if ($legacyHost.HasExited) { throw 'Legacy TransferHost did not remain running long enough to test locked-runtime replacement.' }
 
           $upgrade = Start-Process -FilePath $env:VIDEOSHELF_UPDATE_INSTALLER -ArgumentList @(
-            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS',('/DIR="' + $installDir + '"')
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/VIDEOSHELFUPDATE=1',('/DIR="' + $installDir + '"')
           ) -PassThru
           $upgrade.WaitForExit()
           if ($upgrade.ExitCode -ne 0) { throw "Legacy upgrade failed with exit code $($upgrade.ExitCode)." }
+
+          try { $legacyMain.Refresh() } catch { }
+          if (-not $legacyMain.HasExited) {
+            Stop-Process -Id $legacyMain.Id -Force -ErrorAction SilentlyContinue
+            throw 'Installer did not terminate the old VideoShelf process before relaunch.'
+          }
           try { $legacyHost.Refresh() } catch { }
           if (-not $legacyHost.HasExited) {
             Stop-Process -Id $legacyHost.Id -Force -ErrorAction SilentlyContinue
@@ -176,10 +189,22 @@ jobs:
           $transferTest = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -WorkingDirectory $transferDir -Wait -PassThru
           if ($transferTest.ExitCode -ne 0) { throw 'TransferHost self-test failed after v1.7.3 -> current upgrade.' }
 
-          $relaunched = @(Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
+          $restarted = $null
+          $deadline = [DateTime]::UtcNow.AddSeconds(30)
+          while ([DateTime]::UtcNow -lt $deadline -and $null -eq $restarted) {
+            $restarted = Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
+              try { $_.Path -eq $mainExe -and $_.Id -ne $legacyMain.Id } catch { $false }
+            } | Select-Object -First 1
+            if ($null -eq $restarted) { Start-Sleep -Milliseconds 500 }
+          }
+          if ($null -eq $restarted) { throw 'Legacy update installed successfully but the new VideoShelf process did not reopen.' }
+          Start-Sleep -Seconds 2
+          if ($restarted.HasExited) { throw 'Relaunched VideoShelf exited immediately after legacy upgrade.' }
+          Write-Host "Legacy upgrade replaced the runtime and relaunched VideoShelf successfully (PID $($restarted.Id))."
+
+          Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
             try { $_.Path -eq $mainExe } catch { $false }
-          })
-          $relaunched | Stop-Process -Force -ErrorAction SilentlyContinue
+          } | Stop-Process -Force -ErrorAction SilentlyContinue
           Get-Process -Name 'VideoShelf.TransferHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
           $uninstaller = Join-Path $installDir 'unins000.exe'
