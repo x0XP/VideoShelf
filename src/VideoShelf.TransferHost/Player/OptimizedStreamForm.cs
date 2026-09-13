@@ -13,26 +13,29 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
 {
     const int MaxMetadataBytes = 16 * 1024 * 1024;
     static readonly HttpClient Http = CreateHttp();
-    readonly string cacheRoot;
+    readonly string stateRoot;
+    readonly string temporaryRoot;
     readonly string httpPrefix;
     string? metadataFile;
 
     public ClientEngine Engine { get; }
     public TorrentManager? Manager { get; private set; }
 
-    public StreamingTorrentSession(string cacheRoot)
+    public StreamingTorrentSession(string stateRoot, string temporaryRoot)
     {
-        this.cacheRoot = cacheRoot;
-        Directory.CreateDirectory(cacheRoot);
+        this.stateRoot = stateRoot;
+        this.temporaryRoot = temporaryRoot;
+        Directory.CreateDirectory(stateRoot);
+        Directory.CreateDirectory(temporaryRoot);
         httpPrefix = $"http://127.0.0.1:{FindFreePort()}/";
         var builder = new EngineSettingsBuilder
         {
             AllowPortForwarding = true,
             AllowLocalPeerDiscovery = true,
             AutoSaveLoadDhtCache = true,
-            AutoSaveLoadFastResume = true,
+            AutoSaveLoadFastResume = false,
             AutoSaveLoadMagnetLinkMetadata = true,
-            CacheDirectory = cacheRoot,
+            CacheDirectory = stateRoot,
             HttpStreamingPrefix = httpPrefix,
             MaximumConnections = 300,
             MaximumHalfOpenConnections = 32,
@@ -84,7 +87,7 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
         if (!Uri.TryCreate(source, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             throw new InvalidOperationException("This result does not contain a usable magnet link or torrent metadata URL.");
 
-        metadataFile = Path.Combine(cacheRoot, "selected.torrent");
+        metadataFile = Path.Combine(temporaryRoot, "selected-" + Guid.NewGuid().ToString("N") + ".torrent");
         using var response = await Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength is long length && length > MaxMetadataBytes)
@@ -123,12 +126,18 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
     public static void SelfTest()
     {
         string root = Path.Combine(Path.GetTempPath(), "VideoShelf-stream-settings-" + Guid.NewGuid().ToString("N"));
+        string state = Path.Combine(root, "state");
+        string temporary = Path.Combine(root, "temporary");
         Directory.CreateDirectory(root);
         try
         {
-            using var session = new StreamingTorrentSession(root);
+            using var session = new StreamingTorrentSession(state, temporary);
             if (session.Engine.Settings.MaximumConnections < 250 || session.Engine.Settings.MaximumHalfOpenConnections < 24)
                 throw new InvalidOperationException("Streaming engine connection tuning regressed.");
+            if (session.Engine.Settings.AutoSaveLoadFastResume)
+                throw new InvalidOperationException("Streaming fast-resume must stay disabled because video payloads are temporary.");
+            if (!Path.GetFullPath(session.Engine.Settings.CacheDirectory).Equals(Path.GetFullPath(state), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Streaming discovery state is not using the persistent cache path.");
             if (OptimizedStreamForm.CalculatePrebufferBytes(1024L * 1024 * 1024) < 8L * 1024 * 1024)
                 throw new InvalidOperationException("Streaming prebuffer target is too small.");
         }
@@ -139,6 +148,8 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
 internal sealed class OptimizedStreamForm : Form
 {
     static readonly HashSet<string> Playable = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".vob" };
+    static readonly TimeSpan InitialMetadataWait = TimeSpan.FromSeconds(20);
+    static readonly TimeSpan RetryMetadataWait = TimeSpan.FromSeconds(30);
     readonly string source;
     readonly string releaseTitle;
     readonly bool fixtureMode;
@@ -153,6 +164,7 @@ internal sealed class OptimizedStreamForm : Form
     readonly CancellationTokenSource cts = new();
     readonly SemaphoreSlim playbackGate = new(1, 1);
     readonly string cache;
+    readonly string discoveryCache;
     StreamingTorrentSession? session;
     TorrentManager? manager;
     LibVLC? vlc;
@@ -171,7 +183,9 @@ internal sealed class OptimizedStreamForm : Form
         this.source = source;
         releaseTitle = string.IsNullOrWhiteSpace(title) ? "Torrent" : title;
         this.fixtureMode = fixtureMode;
-        cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf", "StreamingCache", Guid.NewGuid().ToString("N"));
+        string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoShelf");
+        cache = Path.Combine(appData, "StreamingCache", Guid.NewGuid().ToString("N"));
+        discoveryCache = Path.Combine(appData, "TorrentDiscovery");
         Theme.Form(this, "Stream locally", new Size(1060, 720)); MinimumSize = new Size(800, 560);
         var top = new Panel { Dock = DockStyle.Top, Height = 96, BackColor = Theme.Background };
         var accentTop = new Panel { Dock = DockStyle.Top, Height = 2, BackColor = Theme.Blue };
@@ -259,14 +273,25 @@ internal sealed class OptimizedStreamForm : Form
         try
         {
             Directory.CreateDirectory(cache);
-            var streamSession = new StreamingTorrentSession(Path.Combine(cache, "metadata"));
+            Directory.CreateDirectory(discoveryCache);
+            var streamSession = new StreamingTorrentSession(discoveryCache, Path.Combine(cache, "metadata"));
             session = streamSession;
             var torrentManager = await streamSession.AddAsync(source, cache, cts.Token);
             manager = torrentManager;
-            status.Text = "Connecting • retrieving metadata";
-            videoOverlay.Text = "Retrieving torrent metadata…";
+            bool metadataWasCached = torrentManager.HasMetadata;
+            status.Text = metadataWasCached ? "Metadata cached • connecting" : "Connecting • retrieving metadata";
+            videoOverlay.Text = metadataWasCached ? "Preparing cached torrent metadata…" : "Retrieving torrent metadata…";
             await torrentManager.StartAsync();
-            await torrentManager.WaitForMetadataAsync(cts.Token);
+            if (!torrentManager.HasMetadata && !await WaitForMetadataWithTimeoutAsync(torrentManager, InitialMetadataWait, cts.Token))
+            {
+                status.Text = "Retrying torrent metadata discovery…";
+                videoOverlay.Text = "Metadata is taking longer than expected…\n\nRetrying peer discovery";
+                await torrentManager.StopAsync();
+                await Task.Delay(350, cts.Token);
+                await torrentManager.StartAsync();
+                if (!await WaitForMetadataWithTimeoutAsync(torrentManager, RetryMetadataWait, cts.Token))
+                    throw new InvalidOperationException("Torrent metadata could not be retrieved after retrying. The swarm may currently have no reachable peers; try again later or choose another result.");
+            }
             playable = torrentManager.Files
                 .Where(f => Playable.Contains(Path.GetExtension(f.Path)))
                 .OrderBy(f => f.Path, TorrentVideoSelection.NaturalPathComparer)
@@ -292,6 +317,22 @@ internal sealed class OptimizedStreamForm : Form
         {
             video.Visible = false; videoOverlay.Visible = true; videoOverlay.Text = "Unable to start this stream"; status.Text = ex.Message;
             MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    static async Task<bool> WaitForMetadataWithTimeoutAsync(TorrentManager torrentManager, TimeSpan timeout, CancellationToken token)
+    {
+        if (torrentManager.HasMetadata) return true;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token);
+        linked.CancelAfter(timeout);
+        try
+        {
+            await torrentManager.WaitForMetadataAsync(linked.Token);
+            return torrentManager.HasMetadata;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            return torrentManager.HasMetadata;
         }
     }
 
