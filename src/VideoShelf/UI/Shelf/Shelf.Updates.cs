@@ -67,16 +67,25 @@ sealed partial class Shelf {
  async Task InstallUpdateAsync(UpdateInfo info){
   if(info==null||updateBusy)return;
   updateBusy=true;updateButton.Enabled=false;updateButton.Text="Downloading...";
-  try{
-   var progress=new Progress<int>(pct=>{if(!IsDisposed){updateStatus.Text="Downloading VideoShelf v"+info.VersionText+" — "+pct+"%";}});
-   string installer=await UpdateService.DownloadInstallerAsync(info,progress,updateCts.Token);
-   if(IsDisposed)return;
-   updateStatus.Text="Verified. Installing VideoShelf v"+info.VersionText+"...";
-   UpdateService.LaunchInstallerAndRestart(installer);
-   Application.Exit();
-  }catch(OperationCanceledException){}
-  catch(Exception ex){if(!IsDisposed){updateStatus.Text="The update was not installed.";MessageBox.Show(this,"VideoShelf could not install the update. The current installation has not been changed.\n\n"+ex.Message,"VideoShelf updates",MessageBoxButtons.OK,MessageBoxIcon.Error);}}
-  finally{if(!IsDisposed){updateBusy=false;updateButton.Enabled=true;updateButton.Text=availableUpdate==null?"Check for updates":"Install update";}}
+  using(var progressWindow=new UpdateProgressForm(info)){
+   progressWindow.Show(this);progressWindow.BringToFront();progressWindow.SetDownloadProgress(0);
+   try{
+    var progress=new Progress<int>(pct=>{
+     if(IsDisposed)return;
+     if(pct<0){updateStatus.Text="Verifying VideoShelf v"+info.VersionText+"...";progressWindow.SetVerifying();}
+     else if(pct>=100){updateStatus.Text="VideoShelf v"+info.VersionText+" downloaded and verified.";progressWindow.SetVerified();}
+     else{updateStatus.Text="Downloading VideoShelf v"+info.VersionText+" — "+pct+"%";progressWindow.SetDownloadProgress(pct);}
+    });
+    string installer=await UpdateService.DownloadInstallerAsync(info,progress,updateCts.Token);
+    if(IsDisposed)return;
+    updateStatus.Text="Verified. Installing VideoShelf v"+info.VersionText+"...";
+    progressWindow.SetInstalling();progressWindow.BringToFront();
+    UpdateService.LaunchInstallerAndRestart(installer);
+    Application.Exit();
+   }catch(OperationCanceledException){}
+   catch(Exception ex){if(!IsDisposed){updateStatus.Text="The update was not installed.";progressWindow.SetFailure("The current installation was not changed.");progressWindow.BringToFront();MessageBox.Show(progressWindow,"VideoShelf could not install the update. The current installation has not been changed.\n\n"+ex.Message,"VideoShelf updates",MessageBoxButtons.OK,MessageBoxIcon.Error);}}
+   finally{if(!IsDisposed){updateBusy=false;updateButton.Enabled=true;updateButton.Text=availableUpdate==null?"Check for updates":"Install update";}}
+  }
  }
 }
 }
