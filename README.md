@@ -25,6 +25,7 @@ VideoShelf is a lightweight Windows desktop video library browser built with C# 
 - 2160p/4K, 1080p, 720p, and Other resolution filtering.
 - Search-engine-only result thumbnails through DuckDuckGo Images.
 - Saved Torznab API keys protected with Windows DPAPI.
+- Stable in-app update checks backed by GitHub Releases, with SHA-256 verification before any downloaded installer can run.
 
 ## Run
 
@@ -33,6 +34,16 @@ The packaged Windows artifact contains `VideoShelf.exe` plus a `TransferHost` fo
 When running directly from source, double-click `Start.cmd`. It compiles the main app using the .NET Framework C# compiler. If a .NET SDK is installed and the transfer runtime has not already been built, `Start.cmd` also publishes it to `TransferHostRuntime`.
 
 For development, `VideoShelf.csproj` targets .NET Framework 4.8. `src/VideoShelf.TransferHost/VideoShelf.TransferHost.csproj` targets .NET 8 for the integrated torrent/download/player runtime.
+
+## Updates and releases
+
+VideoShelf checks GitHub's latest stable Release after startup without blocking the main window. The same check is available manually from **Settings → Application updates**.
+
+Only a newer non-draft, non-prerelease GitHub Release can be offered. Ordinary commits to `main`, successful CI builds and manually built release candidates do not become user updates by themselves.
+
+An update is installable only when the Release contains a version-matching `VideoShelf-Setup-vX.Y.Z.exe` asset and GitHub reports a valid SHA-256 digest for that asset. VideoShelf downloads the installer into `%LOCALAPPDATA%\VideoShelf\Updates`, verifies the complete file against that digest, then launches the existing installer and restarts VideoShelf. A failed download, invalid digest or failed verification leaves the current installation unchanged.
+
+`src/VideoShelf/Application/AppVersion.cs` is the application-side version source used by the updater and release-candidate packaging. The `Release candidate` GitHub Actions workflow is manual (`workflow_dispatch`) and only builds/tests an installer candidate; it deliberately has read-only repository permissions and does **not** create or publish a GitHub Release. Release publication is a separate deliberate maintainer action.
 
 ## Adding collections
 
@@ -74,13 +85,13 @@ Collection artwork and online-result thumbnails use DuckDuckGo Images only. Coll
 
 The repository is grouped by responsibility rather than keeping the application source flat:
 
-- `src/VideoShelf/Application/` — main application entry point and shared application models.
+- `src/VideoShelf/Application/` — main application entry point, centralized application version and GitHub Release update service.
 - `src/VideoShelf/Infrastructure/` — application-data paths, safe folder creation and display-name aliases.
 - `src/VideoShelf/Branding/` — runtime brand/icon loading.
 - `src/VideoShelf/Search/` — metadata search, search relevance, portrait lookup and online thumbnail lookup.
 - `src/VideoShelf/Media/` — bridge between the lightweight shell and the bundled transfer runtime.
 - `src/VideoShelf/UI/Controls/` — reusable Xdolf-inspired controls and filter/inspector helpers.
-- `src/VideoShelf/UI/Shelf/` — the partial `Shelf` window implementation, split by layout, library, online, branding and visual responsibilities.
+- `src/VideoShelf/UI/Shelf/` — the partial `Shelf` window implementation, including library, online, branding, visual and updater UI responsibilities.
 - `src/VideoShelf/UI/Theme/` — shared Xdolf-inspired palette and tooltip rendering.
 - `src/VideoShelf/Diagnostics/` — deterministic screenshot/test harness used by CI.
 - `src/VideoShelf.TransferHost/Core/` — MonoTorrent source resolution, transfer runtime helpers and torrent-video selection.
