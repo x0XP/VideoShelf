@@ -90,18 +90,27 @@ static class OnlineThumbnailLookup {
   return new ThumbnailIdentity{Series=generic,CacheIdentity=generic.ToLowerInvariant()};
  }
 
- static string PrimaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series;}
- static string SecondaryQuery(ThumbnailIdentity id){return id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image";}
+ static string CleanContext(string context){string s=Regex.Replace((context??"").Trim(),@"\s+"," ");return s.Length>120?s.Substring(0,120).Trim():s;}
+ static string ContextPrefix(string context){string s=CleanContext(context).Replace("\""," ").Trim();return s.Length==0?"":"\""+s+"\" ";}
+ static bool ContextAlreadyPresent(ThumbnailIdentity id,string context){string c=NormalizedWords(CleanContext(context)),series=NormalizedWords(id.Series);return c.Length>0&&series.Contains(c);}
+ static string PrimaryQuery(ThumbnailIdentity id,string context){string prefix=ContextAlreadyPresent(id,context)?"":ContextPrefix(context);return prefix+(id.Episodic?id.Series+" "+id.EpisodeLabel+" screenshot":id.Series);}
+ static string SecondaryQuery(ThumbnailIdentity id,string context){string prefix=ContextAlreadyPresent(id,context)?"":ContextPrefix(context);return prefix+(id.Episodic?id.Series+" "+id.EpisodeLabel+" still":id.Series+" image");}
+ static string PrimaryQuery(ThumbnailIdentity id){return PrimaryQuery(id,"");}
+ static string SecondaryQuery(ThumbnailIdentity id){return SecondaryQuery(id,"");}
  public static string SearchText(string title){return PrimaryQuery(Identify(title));}
+ public static string SearchText(string title,string context){return PrimaryQuery(Identify(title),context);}
 
- public static string CacheKey(string title){
-  string key="v2|"+Identify(title).CacheIdentity;
+ public static string CacheKey(string title){return CacheKey(title,"");}
+ public static string CacheKey(string title,string context){
+  string key="v4|"+NormalizedWords(CleanContext(context))+"|"+Identify(title).CacheIdentity;
   using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
  }
 
- static string FileFor(string title){return Path.Combine(cache,CacheKey(title)+".jpg");}
- static string SearchUrlFor(string query){return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
+ static string FileFor(string title,string context){return Path.Combine(cache,CacheKey(title,context)+".jpg");}
+ static string ForceSafeOff(string query){string q=(query??"").Trim();return q.IndexOf("!safeoff",StringComparison.OrdinalIgnoreCase)>=0?q:q+" !safeoff";}
+ static string SearchUrlFor(string query){query=ForceSafeOff(query);return "https://duckduckgo.com/?q="+Uri.EscapeDataString(query)+"&iax=images&ia=images&kp=-2";}
  public static string SearchUrl(string title){return SearchUrlFor(SearchText(title));}
+ public static string SearchUrl(string title,string context){return SearchUrlFor(SearchText(title,context));}
 
  static async Task<byte[]> Get(string url,int limit,CancellationToken ct){
   Uri uri;if(!Uri.TryCreate(url,UriKind.Absolute,out uri)||uri.Scheme!="https")throw new InvalidDataException("Only HTTPS image sources are supported.");
@@ -145,7 +154,7 @@ static class OnlineThumbnailLookup {
   }
   return Regex.IsMatch(lower,@"\b(?:episode|ep)\s*[#:_\-. ]*0*"+id.Episode+@"\b",RegexOptions.IgnoreCase) || Regex.IsMatch(lower,@"(?:^|[/_\-. ])0*"+id.Episode+@"(?:[/_\-. ]|$)",RegexOptions.IgnoreCase);
  }
- static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id){
+ static int CandidateScore(Dictionary<string,object> row,ThumbnailIdentity id,string context){
   string title=Value(row,"title"),url=Value(row,"url"),image=Value(row,"image");
   string combined=title+" "+url+" "+image;
   string normalized=NormalizedWords(combined);
@@ -155,6 +164,12 @@ static class OnlineThumbnailLookup {
   if(matched<minimum)return int.MinValue;
   if(id.Episodic&&!ContainsEpisodeReference(combined,id))return int.MinValue;
   int score=matched*5;
+  string cleanContext=CleanContext(context),contextPhrase=NormalizedWords(cleanContext);
+  if(contextPhrase.Length>0){
+   string[] contextWords=SignificantWords(cleanContext);int contextMatched=0;
+   foreach(string word in contextWords)if(normalized.IndexOf(word,StringComparison.OrdinalIgnoreCase)>=0)contextMatched++;
+   score+=contextMatched*12;if(normalized.Contains(contextPhrase))score+=24;
+  }
   if(id.Episodic)score+=30;
   if(Regex.IsMatch(combined,@"\b(screenshot|screencap|screen\s*cap|still|gallery|recap|review)\b",RegexOptions.IgnoreCase))score+=8;
   if(Regex.IsMatch(combined,@"\b(poster|wallpaper|key\s*visual|promotional|promo|cover|box\s*art)\b",RegexOptions.IgnoreCase))score-=14;
@@ -164,11 +179,12 @@ static class OnlineThumbnailLookup {
  }
 
  static async Task<List<Dictionary<string,object>>> SearchRows(string query,CancellationToken ct){
-  string html=Encoding.UTF8.GetString(await Get(SearchUrlFor(query),2*1024*1024,ct).ConfigureAwait(false));
+  string effectiveQuery=ForceSafeOff(query);
+  string html=Encoding.UTF8.GetString(await Get(SearchUrlFor(effectiveQuery),2*1024*1024,ct).ConfigureAwait(false));
   if(html.IndexOf("anomaly.js",StringComparison.OrdinalIgnoreCase)>=0||html.IndexOf("challenge-form",StringComparison.OrdinalIgnoreCase)>=0)throw new LookupBlockedException("DuckDuckGo needs a browser check before more thumbnails can be fetched.");
   Match token=Regex.Match(html,"vqd=['\"](?<token>[0-9-]+)['\"]");
   if(!token.Success)throw new InvalidDataException("DuckDuckGo did not provide image search data.");
-  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(query)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=-2&kp=-2";
+  string endpoint="https://duckduckgo.com/i.js?l=uk-en&o=json&q="+Uri.EscapeDataString(effectiveQuery)+"&vqd="+Uri.EscapeDataString(token.Groups["token"].Value)+"&p=-2&kp=-2";
   string json=Encoding.UTF8.GetString(await Get(endpoint,2*1024*1024,ct).ConfigureAwait(false));
   var payload=new JavaScriptSerializer{MaxJsonLength=2*1024*1024}.Deserialize<Dictionary<string,object>>(json);
   object rows;if(payload==null||!payload.TryGetValue("results",out rows))return new List<Dictionary<string,object>>();
@@ -176,37 +192,38 @@ static class OnlineThumbnailLookup {
   return items.Cast<object>().Select(x=>x as Dictionary<string,object>).Where(x=>x!=null).ToList();
  }
 
- static void Store(string title,Image image,string source){
-  Directory.CreateDirectory(cache);string f=FileFor(title),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
+ static void Store(string title,string context,Image image,string source){
+  Directory.CreateDirectory(cache);string f=FileFor(title,context),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
   try{image.Save(temp,ImageFormat.Jpeg);if(File.Exists(f))File.Delete(f);File.Move(temp,f);File.WriteAllText(f+".source",source??"");}
   finally{if(File.Exists(temp))File.Delete(temp);}
  }
 
- static async Task<OnlineThumbnailResult> FindFromQuery(string title,ThumbnailIdentity id,string query,CancellationToken ct){
+ static async Task<OnlineThumbnailResult> FindFromQuery(string title,string context,ThumbnailIdentity id,string query,CancellationToken ct){
   List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);
-  var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
+  var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id,context)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
   foreach(var candidate in ranked){
    ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"image");if(image.Length==0)image=Value(candidate.Row,"thumbnail");if(image.Length==0)continue;
    try{
     Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));
-    string source=Value(candidate.Row,"url");try{Store(title,framed,source);}catch{}
+    string source=Value(candidate.Row,"url");try{Store(title,context,framed,source);}catch{}
     return new OnlineThumbnailResult{Image=framed,Source=source};
    }catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}
   }
   return null;
  }
 
- public static async Task<OnlineThumbnailResult> Find(string title,CancellationToken ct){
+ public static Task<OnlineThumbnailResult> Find(string title,CancellationToken ct){return Find(title,"",ct);}
+ public static async Task<OnlineThumbnailResult> Find(string title,string context,CancellationToken ct){
   await gate.WaitAsync(ct).ConfigureAwait(false);
   try{
-   ct.ThrowIfCancellationRequested();string f=FileFor(title);
+   context=CleanContext(context);ct.ThrowIfCancellationRequested();string f=FileFor(title,context);
    if(File.Exists(f))try{return new OnlineThumbnailResult{Image=DecodeAndFrame(File.ReadAllBytes(f)),FromCache=true,Source=File.Exists(f+".source")?File.ReadAllText(f+".source"):"Cached search result"};}catch{}
    if(DateTime.UtcNow<blockedUntil)return new OnlineThumbnailResult{Error="Thumbnail lookup is temporarily paused after a search-engine access check.",TemporarilyBlocked=true};
    await Task.Delay(850,ct).ConfigureAwait(false);
    ThumbnailIdentity id=Identify(title);
-   OnlineThumbnailResult result=await FindFromQuery(title,id,PrimaryQuery(id),ct).ConfigureAwait(false);
-   if(result==null&&id.Episodic){await Task.Delay(350,ct).ConfigureAwait(false);result=await FindFromQuery(title,id,SecondaryQuery(id),ct).ConfigureAwait(false);}
-   if(result==null&&!id.Episodic){await Task.Delay(350,ct).ConfigureAwait(false);result=await FindFromQuery(title,id,SecondaryQuery(id),ct).ConfigureAwait(false);}
+   OnlineThumbnailResult result=await FindFromQuery(title,context,id,PrimaryQuery(id,context),ct).ConfigureAwait(false);
+   if(result==null&&id.Episodic){await Task.Delay(350,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
+   if(result==null&&!id.Episodic){await Task.Delay(350,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
    if(result!=null)return result;
    return new OnlineThumbnailResult{Error=id.Episodic?"No episode-specific search-engine thumbnail found.":"No usable search-engine thumbnail found."};
   }catch(LookupBlockedException ex){blockedUntil=DateTime.UtcNow.AddMinutes(10);return new OnlineThumbnailResult{Error=ex.Message,TemporarilyBlocked=true};}
@@ -222,6 +239,10 @@ static class OnlineThumbnailLookup {
   if(CacheKey(anime)==CacheKey("[SubsPlease] Re Zero kara Hajimeru Isekai Seikatsu - 83 (1080p).mkv"))throw new InvalidOperationException("Episode thumbnails share a cache key.");
   string tv=SearchText("Example.Show.S02E07.1080p.WEB-DL.x265.mkv");
   if(tv.IndexOf("season 2 episode 7",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("TV episode thumbnail query lost its season/episode identity.");
+  string contextual=SearchText("Sample.Release.1080p.mkv","Sample Subject");
+  if(contextual.IndexOf("Sample Subject",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("Search context was not preserved for thumbnail lookup.");
+  if(CacheKey("Sample.Release.1080p.mkv","Sample Subject")==CacheKey("Sample.Release.1080p.mkv","Different Subject"))throw new InvalidOperationException("Contextual thumbnail cache keys collided.");
+  if(ForceSafeOff("sample query").IndexOf("!safeoff",StringComparison.OrdinalIgnoreCase)<0)throw new InvalidOperationException("Safe Search override token is missing.");
  }
 }
 }
