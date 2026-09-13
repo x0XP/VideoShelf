@@ -36,6 +36,8 @@
     <Compile Include="src\VideoShelf\UI\Controls\MockupFilter.cs" />
     <Compile Include="src\VideoShelf\Infrastructure\FolderManagement.cs" />
     <Compile Include="src\VideoShelf\Media\TransferBridge.cs" />
+    <Compile Include="src\VideoShelf\Application\AppVersion.cs" />
+    <Compile Include="src\VideoShelf\Application\UpdateService.cs" />
     <Compile Include="src\VideoShelf\Application\VideoShelf.cs" />
     <Compile Include="src\VideoShelf\Diagnostics\ScreenshotHarness.cs" />
     <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Core.cs" />
@@ -46,6 +48,7 @@
     <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Polish.cs" />
     <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Library.cs" />
     <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Online.cs" />
+    <Compile Include="src\VideoShelf\UI\Shelf\Shelf.Updates.cs" />
     <Compile Include="src\VideoShelf\Search\PortraitLookup.cs" />
     <Compile Include="src\VideoShelf\Search\OnlineSearch.cs" />
     <Compile Include="src\VideoShelf\Search\BuiltInOnlineSearch.cs" />
