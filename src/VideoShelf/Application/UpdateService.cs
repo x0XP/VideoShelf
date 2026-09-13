@@ -137,6 +137,7 @@ static class UpdateService {
      }
     }
    }
+   if(progress!=null)progress.Report(-1);
    if(!VerifySha256(partialPath,update.Sha256))throw new InvalidOperationException("The downloaded installer failed SHA-256 verification and was not launched.");
    if(File.Exists(finalPath))File.Delete(finalPath);
    File.Move(partialPath,finalPath);
