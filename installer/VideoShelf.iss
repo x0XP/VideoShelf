@@ -5,7 +5,7 @@
   #define OutputDir ".\output"
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.7.2"
+  #define AppVersion "1.7.5"
 #endif
 
 #define AppName "VideoShelf"
@@ -61,6 +61,10 @@ Source: "{#SourceDir}\VideoShelf.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\VideoShelf.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\TransferHost\*"; DestDir: "{app}\TransferHost"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\VideoShelfInstallerLogo.bmp"; Flags: dontcopy
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\TransferHost\*"
+Type: filesandordirs; Name: "{app}\TransferHostRuntime\*"
 
 [Icons]
 Name: "{group}\VideoShelf"; Filename: "{app}\VideoShelf.exe"; WorkingDir: "{app}"; IconFilename: "{app}\VideoShelf.ico"
@@ -519,10 +523,37 @@ begin
     Result := ReleaseValue >= DotNet48Release;
 end;
 
+procedure StopTransferRuntime();
+var
+  ResultCode: Integer;
+begin
+  Log('Stopping any active VideoShelf transfer runtime before upgrade.');
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM VideoShelf.TransferHost.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(250);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  TransferPath: String;
+  LegacyTransferPath: String;
 begin
   ExistingInstallBeforeSetup := FileExists(ExpandConstant('{app}\{#AppExeName}'));
   Result := '';
+  if not ExistingInstallBeforeSetup then
+    exit;
+
+  StopTransferRuntime();
+  TransferPath := ExpandConstant('{app}\TransferHost');
+  LegacyTransferPath := ExpandConstant('{app}\TransferHostRuntime');
+
+  if DirExists(TransferPath) and (not DelTree(TransferPath, True, True, True)) then
+  begin
+    Result := 'VideoShelf could not replace the transfer runtime. Close any open VideoShelf streaming or download windows, then try the update again.';
+    exit;
+  end;
+
+  if DirExists(LegacyTransferPath) then
+    DelTree(LegacyTransferPath, True, True, True);
 end;
 
 function ShouldRelaunchAfterUpdate(): Boolean;

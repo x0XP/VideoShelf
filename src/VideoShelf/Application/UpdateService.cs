@@ -156,19 +156,30 @@ static class UpdateService {
 
  public static void LaunchInstallerAndRestart(string installerPath){
   if(string.IsNullOrWhiteSpace(installerPath)||!File.Exists(installerPath))throw new FileNotFoundException("The verified update installer could not be found.",installerPath);
-  string currentExe=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"VideoShelf.exe");
+  string currentExe=typeof(UpdateService).Assembly.Location;
+  if(string.IsNullOrWhiteSpace(currentExe)||!File.Exists(currentExe))currentExe=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"VideoShelf.exe");
+  int currentPid=Process.GetCurrentProcess().Id;
   string helper=Path.Combine(Path.GetDirectoryName(installerPath),"apply-update-"+Guid.NewGuid().ToString("N")+".cmd");
+  File.WriteAllText(helper,BuildInstallerHelperScript(installerPath,currentExe,currentPid),Encoding.ASCII);
+  var psi=new ProcessStartInfo("cmd.exe","/d /c \"\""+helper+"\"\""){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Path.GetDirectoryName(helper)};
+  var process=Process.Start(psi);
+  if(process==null)throw new InvalidOperationException("VideoShelf could not start the update handoff helper.");
+  process.Dispose();
+ }
+
+ static string BuildInstallerHelperScript(string installerPath,string currentExe,int currentPid){
   var script=new StringBuilder();
   script.AppendLine("@echo off");
-  script.AppendLine("ping 127.0.0.1 -n 3 >nul");
+  script.AppendLine("setlocal");
+  script.AppendLine("powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command \"$p=Get-Process -Id "+currentPid.ToString(CultureInfo.InvariantCulture)+" -ErrorAction SilentlyContinue; if($p -and -not $p.WaitForExit(90000)){exit 2}\" >nul 2>&1");
+  script.AppendLine("if errorlevel 1 ping 127.0.0.1 -n 6 >nul");
   script.AppendLine("start /wait \"\" \""+EscapeBatch(installerPath)+"\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /VIDEOSHELFUPDATE=1");
   script.AppendLine("set \"videoshelf_update_exit=%errorlevel%\"");
+  script.AppendLine("ping 127.0.0.1 -n 2 >nul");
   script.AppendLine("if exist \""+EscapeBatch(currentExe)+"\" start \"\" \""+EscapeBatch(currentExe)+"\"");
   script.AppendLine("del \"%~f0\"");
   script.AppendLine("exit /b %videoshelf_update_exit%");
-  File.WriteAllText(helper,script.ToString(),Encoding.ASCII);
-  var psi=new ProcessStartInfo("cmd.exe","/d /c \"\""+helper+"\"\""){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Path.GetDirectoryName(helper)};
-  Process.Start(psi);
+  return script.ToString();
  }
  static string EscapeBatch(string value){return (value??"").Replace("%","%%").Replace("\"","\"\"");}
 
@@ -178,6 +189,8 @@ static class UpdateService {
   var release=new ReleaseDto{tag_name="v1.8.0",html_url="https://github.com/x0XP/VideoShelf/releases/tag/v1.8.0",body="test",assets=new List<AssetDto>{new AssetDto{name="VideoShelf-Setup-v1.8.0.exe",browser_download_url="https://github.com/x0XP/VideoShelf/releases/download/v1.8.0/VideoShelf-Setup-v1.8.0.exe",digest="sha256:"+new string('b',64),state="uploaded",size=1024}}};
   var info=BuildUpdateInfo(release);if(info==null||info.VersionText!="1.8.0"||info.Sha256!=new string('b',64))throw new InvalidOperationException("Update release parsing self-test failed.");
   release.prerelease=true;if(BuildUpdateInfo(release)!=null)throw new InvalidOperationException("Prerelease update filtering self-test failed.");
+  string helper=BuildInstallerHelperScript(@"C:\Program Files\VideoShelf Setup.exe",@"C:\Users\Test\VideoShelf.exe",4321);
+  if(!helper.Contains("Get-Process -Id 4321")||!helper.Contains("WaitForExit(90000)")||!helper.Contains("/VIDEOSHELFUPDATE=1")||!helper.Contains(@"C:\Users\Test\VideoShelf.exe"))throw new InvalidOperationException("Update handoff helper self-test failed.");
  }
 }
 }
