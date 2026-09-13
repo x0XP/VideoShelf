@@ -1,3 +1,5 @@
+using MonoTorrent;
+
 namespace VideoShelf.TransferHost;
 
 internal static class TorrentDiscovery
