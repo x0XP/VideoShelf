@@ -9,6 +9,7 @@ internal static class TransferRuntime
         StreamingTorrentSession.SelfTest();
         TransferSourceResolver.SelfTest();
         TorrentVideoSelection.SelfTest();
+        OptimizedStreamForm.EpisodeNavigationSelfTest();
         TransferUiCapture.Capture(Environment.CurrentDirectory);
     }
 }
