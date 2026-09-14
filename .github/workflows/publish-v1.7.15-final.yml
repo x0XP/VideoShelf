@@ -1,0 +1,169 @@
+name: Publish VideoShelf v1.7.15 final
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/publish-v1.7.15-final.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    env:
+      RELEASE_VERSION: 1.7.15
+      RELEASE_TAG: v1.7.15
+      RELEASE_SOURCE: 01e8c8fab2a4e9120c63e89afec0f4133841bc47
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 01e8c8fab2a4e9120c63e89afec0f4133841bc47
+          fetch-depth: 1
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify exact release source
+        shell: powershell
+        run: |
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne $env:RELEASE_SOURCE) { throw "Expected $env:RELEASE_SOURCE but checked out $head." }
+          $source = Get-Content '.\src\VideoShelf\Application\AppVersion.cs' -Raw
+          if ($source -notmatch 'Current\s*=\s*"1\.7\.15"') { throw 'AppVersion.Current is not 1.7.15.' }
+          $changelog = Get-Content '.\CHANGELOG.md' -Raw
+          if (-not $changelog.StartsWith('VideoShelf 1.7.15')) { throw 'v1.7.15 changelog is missing.' }
+
+      - name: Build and self-test shell
+        shell: powershell
+        run: |
+          cmd /c Start.cmd --build-only
+          if ($LASTEXITCODE -ne 0) { throw 'VideoShelf build failed.' }
+          $test = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw 'VideoShelf self-test failed.' }
+
+      - name: Re-prove live artwork paths
+        shell: powershell
+        run: |
+          $live = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--test-online-artwork','"Re Zero anime"') -Wait -PassThru -NoNewWindow
+          if ($live.ExitCode -ne 0) { throw 'Live online artwork lookup failed.' }
+          $collection = Join-Path $env:RUNNER_TEMP 'VideoShelf-v1.7.15-collection.png'
+          $p = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--screenshot-rezero',('"' + $collection + '"')) -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(90000)) { try { $p.Kill() } catch {}; throw 'Collection artwork screenshot timed out.' }
+          if (!(Test-Path $collection) -or (Get-Item $collection).Length -lt 5000) { throw 'Collection artwork screenshot was not created.' }
+          $online = Join-Path $env:RUNNER_TEMP 'VideoShelf-v1.7.15-online.png'
+          $p = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--screenshot-built-in-online','"re:zero"','"re zero"',('"' + $online + '"'),'1') -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(90000)) { try { $p.Kill() } catch {}; throw 'Online-result screenshot timed out.' }
+          if (!(Test-Path $online) -or (Get-Item $online).Length -lt 5000) { throw 'Online-result screenshot was not created.' }
+
+      - name: Publish and self-test transfer runtime
+        shell: powershell
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'VideoShelf-v1.7.15-package'
+          $transferDir = Join-Path $package 'TransferHost'
+          New-Item -ItemType Directory -Force -Path $transferDir | Out-Null
+          dotnet publish '.\src\VideoShelf.TransferHost\VideoShelf.TransferHost.csproj' -c Release -r win-x64 --self-contained true -o $transferDir
+          if ($LASTEXITCODE -ne 0) { throw 'TransferHost publish failed.' }
+          Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
+          Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
+          Copy-Item '.\VideoShelf.png' (Join-Path $package 'VideoShelf.png')
+          $test = Start-Process -FilePath (Join-Path $transferDir 'VideoShelf.TransferHost.exe') -ArgumentList '--self-test' -WorkingDirectory $transferDir -Wait -PassThru
+          if ($test.ExitCode -ne 0) { throw 'TransferHost self-test failed.' }
+          "VIDEOSHELF_RELEASE_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build exact installer
+        shell: powershell
+        run: |
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+            $iscc = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'ISCC.exe was not found.' }
+          $issPath = '.\installer\VideoShelf.release-v1.7.15.final.iss'
+          $iss = Get-Content '.\installer\VideoShelf.iss' -Raw
+          $iss = [regex]::Replace($iss, '(?m)^OutputBaseFilename=.*$', 'OutputBaseFilename=VideoShelf-Setup-v1.7.15')
+          $iss = [regex]::Replace($iss, '(?m)^VersionInfoVersion=.*$', 'VersionInfoVersion=1.7.15.0')
+          Set-Content -Path $issPath -Value $iss -Encoding UTF8
+          $out = Join-Path $env:RUNNER_TEMP 'VideoShelf-v1.7.15-release'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          & $iscc "/DSourceDir=$env:VIDEOSHELF_RELEASE_PACKAGE" "/DOutputDir=$out" "/DAppVersion=$env:RELEASE_VERSION" $issPath
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
+          $installer = Join-Path $out 'VideoShelf-Setup-v1.7.15.exe'
+          if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1000000) { throw 'Installer was not created correctly.' }
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Validated v1.7.15 installer SHA-256: $hash"
+          Copy-Item $installer '.\VideoShelf-Setup-v1.7.15.exe' -Force
+          "VIDEOSHELF_RELEASE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VIDEOSHELF_RELEASE_HASH=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Test clean install
+        shell: powershell
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-v1.7.15-clean-install'
+          $install = Start-Process -FilePath $env:VIDEOSHELF_RELEASE_INSTALLER -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $installDir + '"')) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Clean install failed with exit code $($install.ExitCode)." }
+          $mainExe = Join-Path $installDir 'VideoShelf.exe'
+          $transferExe = Join-Path $installDir 'TransferHost\VideoShelf.TransferHost.exe'
+          if (!(Test-Path $mainExe) -or !(Test-Path $transferExe)) { throw 'Clean installation is incomplete.' }
+          $mainTest = Start-Process -FilePath $mainExe -ArgumentList '--self-test' -WorkingDirectory $installDir -Wait -PassThru
+          $transferTest = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -WorkingDirectory (Split-Path $transferExe) -Wait -PassThru
+          if ($mainTest.ExitCode -ne 0 -or $transferTest.ExitCode -ne 0) { throw 'Installed runtime self-test failed.' }
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Clean uninstall failed.' }
+
+      - name: Retain validated installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoShelf-Setup-v1.7.15-validated
+          path: VideoShelf-Setup-v1.7.15.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create and verify release tag
+        shell: powershell
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin "refs/tags/$env:RELEASE_TAG:refs/tags/$env:RELEASE_TAG" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            git tag -a $env:RELEASE_TAG $env:RELEASE_SOURCE -m "VideoShelf $env:RELEASE_TAG"
+            git push origin "refs/tags/$env:RELEASE_TAG"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the v1.7.15 tag.' }
+          }
+          $tagged = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          if ($tagged -ne $env:RELEASE_SOURCE) { throw "Tag points to $tagged instead of $env:RELEASE_SOURCE." }
+
+      - name: Publish v1.7.15 from existing tag
+        shell: powershell
+        run: |
+          $notes = Join-Path $env:RUNNER_TEMP 'v1.7.15-notes.md'
+          @'
+          ## VideoShelf v1.7.15
+
+          - Restores online-result screenshots/thumbnails and collection artwork.
+          - Uses browser-compatible image requests with Bing fallback when DuckDuckGo is blocked or unavailable.
+          - Retries original/provider thumbnail URLs instead of leaving cards blank after a single blocked image.
+          - Adds search-context artwork fallback for overly specific torrent titles.
+          - Adds live artwork regression coverage for real online results and collection rendering.
+          '@ | Set-Content -Path $notes -Encoding UTF8
+          $published = $false
+          for ($attempt = 1; $attempt -le 4; $attempt++) {
+            Write-Host "Release API attempt $attempt of 4"
+            gh release create $env:RELEASE_TAG $env:VIDEOSHELF_RELEASE_INSTALLER --repo x0XP/VideoShelf --verify-tag --title 'VideoShelf v1.7.15' --notes-file $notes --latest
+            if ($LASTEXITCODE -eq 0) { $published = $true; break }
+            if ($attempt -lt 4) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if (-not $published) { throw 'The validated installer was retained as an Actions artifact, but GitHub rejected release creation after four attempts.' }
