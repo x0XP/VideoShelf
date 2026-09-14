@@ -169,6 +169,7 @@ internal sealed class OptimizedStreamForm : Form
     readonly VideoView video = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
     readonly Label videoOverlay = Theme.Label("Preparing stream…", true);
     readonly DarkComboBox fileChoice = new() { Width = 390 };
+    readonly DarkComboBox subtitleChoice = new() { Width = 180, EmptyText = "Subtitles" };
     readonly Label status = Theme.Label("Preparing torrent metadata…"), timeLabel = Theme.Label("00:00 / 00:00");
     readonly Button playPause = Theme.Button("Play", 90), stop = Theme.Button("Stop", 80);
     readonly SeekBar seek = new() { Width = 280, Enabled = false };
@@ -185,8 +186,21 @@ internal sealed class OptimizedStreamForm : Form
     object? currentHttpStream;
     List<ITorrentManagerFile> playable = new();
     ITorrentManagerFile? selected;
+    readonly List<SubtitleOption> subtitleOptions = new();
+    string subtitleSignature = "";
+    bool suppressSubtitleChange;
+    bool subtitleAutoApplied;
     int playbackRevision;
     bool closing;
+
+    sealed class SubtitleOption
+    {
+        public const int AutoId = int.MinValue;
+        public int Id { get; }
+        public string Name { get; }
+        public SubtitleOption(int id, string name) { Id = id; Name = name; }
+        public override string ToString() => Name;
+    }
 
     public OptimizedStreamForm(string source, string title) : this(source, title, null, false) { }
     internal OptimizedStreamForm(string source, string title, string? fallbackSource) : this(source, title, fallbackSource, false) { }
@@ -226,9 +240,10 @@ internal sealed class OptimizedStreamForm : Form
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 68, BackColor = Theme.Background };
         playPause.SetBounds(22, 16, 90, 34); playPause.Enabled = false;
         stop.SetBounds(122, 16, 80, 34);
-        seek.SetBounds(220, 18, 650, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+        subtitleChoice.SetBounds(216, 18, 180, 31); subtitleChoice.Enabled = false;
+        seek.SetBounds(410, 18, 460, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Top;
         timeLabel.SetBounds(880, 22, 150, 22); timeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left; timeLabel.TextAlign = ContentAlignment.MiddleRight; timeLabel.ForeColor = Color.FromArgb(190, 205, 220);
-        bottom.Controls.AddRange(new Control[] { playPause, stop, seek, timeLabel });
+        bottom.Controls.AddRange(new Control[] { playPause, stop, subtitleChoice, seek, timeLabel });
         Controls.Add(videoHost); Controls.Add(bottom); Controls.Add(top);
 
         if (fixtureMode)
@@ -251,6 +266,7 @@ internal sealed class OptimizedStreamForm : Form
                     await PlayFileAsync(playable[fileChoice.SelectedIndex]);
             };
         }
+        subtitleChoice.SelectedIndexChanged += (_, _) => ApplySubtitleSelection();
         playPause.Click += (_, _) => TogglePlayback();
         stop.Click += (_, _) => Close();
         seek.ValueCommitted += (_, _) => CommitSeek();
@@ -266,6 +282,13 @@ internal sealed class OptimizedStreamForm : Form
         fileChoice.Items.Add("Season 01/Example.S01E03.1080p.mkv  (1.5 GB)");
         fileChoice.SelectedIndex = 0;
         fileChoice.Enabled = true;
+        subtitleOptions.Add(new SubtitleOption(SubtitleOption.AutoId, "Subtitles: Auto (English)"));
+        subtitleOptions.Add(new SubtitleOption(-1, "Subtitles: Off"));
+        subtitleOptions.Add(new SubtitleOption(11, "English"));
+        subtitleOptions.Add(new SubtitleOption(12, "English • Signs & Songs"));
+        foreach (var option in subtitleOptions) subtitleChoice.Items.Add(option);
+        subtitleChoice.SelectedIndex = 0;
+        subtitleChoice.Enabled = true;
         status.Text = "Ready • 4.8 MB/s • temporary stream cache";
         videoOverlay.Text = "Optimized local stream preview";
         playPause.Text = "Pause";
@@ -278,9 +301,12 @@ internal sealed class OptimizedStreamForm : Form
     void LayoutPlayer()
     {
         status.Width = Math.Max(180, ClientSize.Width - status.Left - 22);
-        int timeWidth = 150, timeX = Math.Max(420, ClientSize.Width - 22 - timeWidth);
+        int timeWidth = 150, timeX = Math.Max(620, ClientSize.Width - 22 - timeWidth);
+        int subtitleWidth = ClientSize.Width < 900 ? 150 : 180;
+        subtitleChoice.SetBounds(216, 18, subtitleWidth, 31);
+        int seekX = subtitleChoice.Right + 14;
         timeLabel.SetBounds(timeX, 22, timeWidth, 22);
-        seek.SetBounds(220, 18, Math.Max(180, timeX - 232), 30);
+        seek.SetBounds(seekX, 18, Math.Max(120, timeX - seekX - 12), 30);
     }
 
     async Task StartAsync()
@@ -426,6 +452,7 @@ internal sealed class OptimizedStreamForm : Form
                 if (request != playbackRevision || closing || activeManager == null || activeSession == null || activePlayer == null || activeVlc == null) return;
                 var streamProvider = activeManager.StreamProvider ?? throw new InvalidOperationException("Torrent streaming provider is unavailable.");
                 selected = file; playPause.Enabled = false; seek.Enabled = false;
+                ResetSubtitleChoices();
                 try { activePlayer.Stop(); } catch { }
                 currentMedia?.Dispose(); currentMedia = null; await DisposeHttpStreamAsync();
                 foreach (var item in activeManager.Files) await activeManager.SetFilePriorityAsync(item, item == file ? Priority.High : Priority.DoNotDownload);
@@ -440,6 +467,7 @@ internal sealed class OptimizedStreamForm : Form
                 bool started = activePlayer.Play(currentMedia);
                 if (!started) throw new InvalidOperationException("LibVLC could not start playback for the selected torrent file.");
                 playPause.Text = "Pause"; playPause.Enabled = true; seek.Enabled = true; video.Visible = true; videoOverlay.Visible = false;
+                RefreshSubtitleChoices();
             }
             finally { playbackGate.Release(); }
         }
@@ -450,6 +478,119 @@ internal sealed class OptimizedStreamForm : Form
             status.Text = "Playback failed • " + ex.Message; video.Visible = false; videoOverlay.Text = "Playback failed\n\n" + ex.Message; videoOverlay.Visible = true;
             playPause.Text = "Play"; playPause.Enabled = player != null;
         }
+    }
+
+    void ResetSubtitleChoices()
+    {
+        suppressSubtitleChange = true;
+        subtitleChoice.Items.Clear();
+        subtitleOptions.Clear();
+        subtitleChoice.Enabled = false;
+        subtitleChoice.EmptyText = "Subtitles";
+        subtitleSignature = "";
+        subtitleAutoApplied = false;
+        suppressSubtitleChange = false;
+    }
+
+    void RefreshSubtitleChoices()
+    {
+        MediaPlayer? activePlayer = player;
+        if (activePlayer == null || currentMedia == null) return;
+
+        LibVLCSharp.Shared.Structures.TrackDescription[] descriptions;
+        try { descriptions = activePlayer.SpuDescription; }
+        catch { return; }
+
+        var tracks = descriptions
+            .Where(d => d.Id >= 0)
+            .Select(d => new SubtitleOption(d.Id, CleanSubtitleName(d.Name, d.Id)))
+            .ToList();
+
+        string nextSignature = string.Join("", tracks.Select(t => t.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + t.Name));
+        if (nextSignature == subtitleSignature) return;
+        subtitleSignature = nextSignature;
+
+        suppressSubtitleChange = true;
+        subtitleChoice.Items.Clear();
+        subtitleOptions.Clear();
+        var culture = System.Globalization.CultureInfo.CurrentUICulture;
+        string languageName = culture.EnglishName.Split('(')[0].Trim();
+        string autoLabel = culture.TwoLetterISOLanguageName.Equals("iv", StringComparison.OrdinalIgnoreCase)
+            ? "Subtitles: Auto"
+            : "Subtitles: Auto (" + languageName + ")";
+        subtitleOptions.Add(new SubtitleOption(SubtitleOption.AutoId, autoLabel));
+        subtitleOptions.Add(new SubtitleOption(-1, "Subtitles: Off"));
+        foreach (var track in tracks) subtitleOptions.Add(track);
+        foreach (var option in subtitleOptions) subtitleChoice.Items.Add(option);
+        subtitleChoice.SelectedIndex = 0;
+        subtitleChoice.Enabled = tracks.Count > 0;
+        subtitleChoice.EmptyText = tracks.Count > 0 ? autoLabel : "No subtitles";
+        suppressSubtitleChange = false;
+
+        if (!subtitleAutoApplied)
+        {
+            ApplyAutoSubtitle(activePlayer, tracks);
+            subtitleAutoApplied = true;
+        }
+    }
+
+    static string CleanSubtitleName(string? name, int id)
+    {
+        string value = (name ?? "").Trim();
+        if (value.Length == 0 || value.Equals("Track", StringComparison.OrdinalIgnoreCase)) value = "Subtitle " + id;
+        return value.Replace("	", " ");
+    }
+
+    static void ApplyAutoSubtitle(MediaPlayer activePlayer, IReadOnlyList<SubtitleOption> tracks)
+    {
+        int preferred = ChoosePreferredSubtitleId(tracks, System.Globalization.CultureInfo.CurrentUICulture);
+        if (preferred < 0 && activePlayer.Spu >= 0 && tracks.Any(t => t.Id == activePlayer.Spu)) preferred = activePlayer.Spu;
+        activePlayer.SetSpu(preferred);
+    }
+
+    static int ChoosePreferredSubtitleId(IReadOnlyList<SubtitleOption> tracks, System.Globalization.CultureInfo culture)
+    {
+        if (tracks.Count == 0) return -1;
+        string two = culture.TwoLetterISOLanguageName.ToLowerInvariant();
+        string three;
+        try { three = culture.ThreeLetterISOLanguageName.ToLowerInvariant(); } catch { three = ""; }
+        string englishName = culture.EnglishName.Split('(')[0].Trim().ToLowerInvariant();
+        string nativeName = culture.NativeName.Split('(')[0].Trim().ToLowerInvariant();
+        int bestId = -1, bestScore = int.MinValue;
+        foreach (var track in tracks)
+        {
+            string label = track.Name.ToLowerInvariant();
+            var tokens = System.Text.RegularExpressions.Regex.Split(label, "[^\p{L}\p{N}]+")
+                .Where(x => x.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            int score = 0;
+            if (two.Length > 1 && tokens.Contains(two)) score += 8;
+            if (three.Length > 2 && tokens.Contains(three)) score += 9;
+            if (englishName.Length > 2 && label.Contains(englishName, StringComparison.OrdinalIgnoreCase)) score += 10;
+            if (nativeName.Length > 2 && label.Contains(nativeName, StringComparison.OrdinalIgnoreCase)) score += 9;
+            if (label.Contains("dialog", StringComparison.OrdinalIgnoreCase) || label.Contains("full", StringComparison.OrdinalIgnoreCase)) score += 3;
+            if (label.Contains("sign", StringComparison.OrdinalIgnoreCase) || label.Contains("song", StringComparison.OrdinalIgnoreCase)) score -= 5;
+            if (label.Contains("forced", StringComparison.OrdinalIgnoreCase)) score -= 3;
+            if (label.Contains("commentary", StringComparison.OrdinalIgnoreCase)) score -= 8;
+            if (score > bestScore && score > 0) { bestScore = score; bestId = track.Id; }
+        }
+        return bestId;
+    }
+
+    void ApplySubtitleSelection()
+    {
+        if (suppressSubtitleChange || player == null) return;
+        int index = subtitleChoice.SelectedIndex;
+        if (index < 0 || index >= subtitleOptions.Count) return;
+        SubtitleOption option = subtitleOptions[index];
+        if (option.Id == SubtitleOption.AutoId)
+        {
+            ApplyAutoSubtitle(player, subtitleOptions.Where(t => t.Id >= 0).ToList());
+            subtitleAutoApplied = true;
+            return;
+        }
+        player.SetSpu(option.Id);
+        subtitleAutoApplied = true;
     }
 
     void TogglePlayback()
@@ -463,6 +604,7 @@ internal sealed class OptimizedStreamForm : Form
 
     void RefreshStats()
     {
+        RefreshSubtitleChoices();
         if (manager != null && selected != null && currentMedia != null)
             status.Text = $"{manager.State} • {manager.Monitor.DownloadRate / (1024d * 1024d):0.0} MB/s • buffered local stream";
         if (player != null && player.Length > 0)
