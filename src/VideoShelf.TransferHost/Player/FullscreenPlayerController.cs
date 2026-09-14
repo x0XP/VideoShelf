@@ -284,17 +284,36 @@ internal sealed class FullscreenPlayerController : IDisposable
 
         const int iconWidth = 42;
         const int timeWidth = 150;
-        int fullX = Math.Max(100, form.ClientSize.Width - 22 - iconWidth);
-        int timeX = Math.Max(230, fullX - 12 - timeWidth);
-        int seekX = 76;
-        int seekWidth = Math.Max(130, timeX - seekX - 12);
+        int right = form.ClientSize.Width - 22;
+        int fullX = Math.Max(100, right - iconWidth);
+        int volumeX = fullX - 8 - iconWidth;
+        int subtitleX = volumeX - 8 - iconWidth;
 
-        playPause.SetBounds(22, 16, iconWidth, 34);
-        seek.SetBounds(seekX, 18, seekWidth, 30);
-        timeLabel.SetBounds(timeX, 22, timeWidth, 22);
-        fullScreen.SetBounds(fullX, 16, iconWidth, 34);
+        PlayerIconButton? subtitle = bottomBar.Controls.OfType<PlayerIconButton>()
+            .FirstOrDefault(b => !ReferenceEquals(b, playPause) && !ReferenceEquals(b, fullScreen)
+                && (b.AccessibleName?.StartsWith("Subtitles", StringComparison.OrdinalIgnoreCase) ?? false));
+        PlayerIconButton? volumeControl = bottomBar.Controls.OfType<PlayerIconButton>()
+            .FirstOrDefault(b => !ReferenceEquals(b, playPause) && !ReferenceEquals(b, fullScreen)
+                && (b.AccessibleName?.StartsWith("Volume", StringComparison.OrdinalIgnoreCase) ?? false));
+        DarkComboBox? audio = bottomBar.Controls.OfType<DarkComboBox>().FirstOrDefault(c => c.Visible);
+
+        playPause.SetBounds(22, 9, iconWidth, 34);
+        if (audio != null)
+        {
+            int audioWidth = form.ClientSize.Width < 900 ? 120 : 160;
+            audio.SetBounds(76, 11, audioWidth, 31);
+        }
+        if (subtitle != null) subtitle.SetBounds(subtitleX, 9, iconWidth, 34);
+        if (volumeControl != null) volumeControl.SetBounds(volumeX, 9, iconWidth, 34);
+        fullScreen.SetBounds(fullX, 9, iconWidth, 34);
+
+        int timeX = Math.Max(260, form.ClientSize.Width - 22 - timeWidth);
+        timeLabel.SetBounds(timeX, 59, timeWidth, 22);
+        seek.SetBounds(22, 55, Math.Max(140, timeX - 34), 30);
 
         playPause.BringToFront();
+        subtitle?.BringToFront();
+        volumeControl?.BringToFront();
         fullScreen.BringToFront();
     }
 
