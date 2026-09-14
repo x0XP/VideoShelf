@@ -1,0 +1,71 @@
+name: Fix update relaunch race
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/fix-update-relaunch-race.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Add bounded single-instance retry for update relaunch
+        shell: pwsh
+        run: |
+          $appPath = 'src/VideoShelf/Application/VideoShelf.cs'
+          $text = Get-Content $appPath -Raw
+
+          $classMarker = "static class Program {`n"
+          $helper = @'
+          static class Program {
+           static Mutex AcquireSingleInstance(bool waitForUpdateRelaunch) {
+            const string instanceName=@"Local\VideoShelf-52B6117F-2222-49BB-935D-8C7FA18DC42B";
+            DateTime deadline=DateTime.UtcNow.AddSeconds(waitForUpdateRelaunch?8:0);
+            while(true){
+             bool ownsInstance;
+             var instance=new Mutex(true,instanceName,out ownsInstance);
+             if(ownsInstance)return instance;
+             instance.Dispose();
+             if(!waitForUpdateRelaunch||DateTime.UtcNow>=deadline)return null;
+             Thread.Sleep(150);
+            }
+           }
+          '@
+          if (-not $text.Contains($classMarker)) { throw 'Program class marker was not found.' }
+          $text = $text.Replace($classMarker, $helper + "`n")
+
+          $oldBlock = @'
+            bool ownsInstance;
+            using(var singleInstance=new Mutex(true,@"Local\VideoShelf-52B6117F-2222-49BB-935D-8C7FA18DC42B",out ownsInstance)){
+             if(!ownsInstance)return;
+          '@
+          $newBlock = @'
+            bool updateRelaunch=args!=null&&args.Any(a=>a.Equals("--update-relaunch",StringComparison.OrdinalIgnoreCase));
+            using(var singleInstance=AcquireSingleInstance(updateRelaunch)){
+             if(singleInstance==null)return;
+          '@
+          if (-not $text.Contains($oldBlock)) { throw 'Existing single-instance block was not found.' }
+          $text = $text.Replace($oldBlock, $newBlock)
+          Set-Content -Path $appPath -Value $text -NoNewline -Encoding utf8
+
+          $issPath = 'installer/VideoShelf.iss'
+          $iss = Get-Content $issPath -Raw
+          $oldRun = 'Filename: "{app}\VideoShelf.exe"; WorkingDir: "{app}"; Flags: nowait; Check: ShouldRelaunchAfterUpdate'
+          $newRun = 'Filename: "{app}\VideoShelf.exe"; Parameters: "--update-relaunch"; WorkingDir: "{app}"; Flags: nowait; Check: ShouldRelaunchAfterUpdate'
+          if (-not $iss.Contains($oldRun)) { throw 'Update relaunch [Run] entry was not found.' }
+          $iss = $iss.Replace($oldRun, $newRun)
+          Set-Content -Path $issPath -Value $iss -NoNewline -Encoding utf8
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $appPath $issPath
+          git commit -m 'Harden updater relaunch single-instance handoff'
+          git push origin HEAD:main
