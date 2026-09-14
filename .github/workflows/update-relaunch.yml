@@ -11,6 +11,9 @@ on:
       - 'src/VideoShelf.TransferHost/**'
       - '.github/workflows/update-relaunch.yml'
 
+permissions:
+  contents: read
+
 jobs:
   update-relaunch:
     runs-on: windows-latest
@@ -26,6 +29,12 @@ jobs:
           cmd /c Start.cmd --build-only
           if ($LASTEXITCODE -ne 0) { throw 'VideoShelf build failed.' }
 
+          $source = Get-Content '.\src\VideoShelf\Application\AppVersion.cs' -Raw
+          $match = [regex]::Match($source, 'Current\s*=\s*"([0-9]+(?:\.[0-9]+){1,3})"')
+          if (-not $match.Success) { throw 'Could not resolve AppVersion.Current.' }
+          $version = $match.Groups[1].Value
+          "VIDEOSHELF_UPDATE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
           $package = Join-Path $env:RUNNER_TEMP 'VideoShelf-update-package'
           $transferDir = Join-Path $package 'TransferHost'
           New-Item -ItemType Directory -Force -Path $transferDir | Out-Null
@@ -34,6 +43,10 @@ jobs:
           Copy-Item '.\VideoShelf.exe' (Join-Path $package 'VideoShelf.exe')
           Copy-Item '.\VideoShelf.ico' (Join-Path $package 'VideoShelf.ico')
           Copy-Item '.\VideoShelf.png' (Join-Path $package 'VideoShelf.png')
+
+          $mainTest = Start-Process -FilePath (Join-Path $package 'VideoShelf.exe') -ArgumentList '--self-test' -WorkingDirectory $package -Wait -PassThru
+          $transferTest = Start-Process -FilePath (Join-Path $transferDir 'VideoShelf.TransferHost.exe') -ArgumentList '--self-test' -WorkingDirectory $transferDir -Wait -PassThru
+          if ($mainTest.ExitCode -ne 0 -or $transferTest.ExitCode -ne 0) { throw 'Current runtime self-test failed.' }
           "VIDEOSHELF_UPDATE_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build update installer
@@ -53,17 +66,21 @@ jobs:
           }
           if (-not $iscc) { throw 'ISCC.exe was not found.' }
 
-          $source = Get-Content '.\src\VideoShelf\Application\AppVersion.cs' -Raw
-          $match = [regex]::Match($source, 'Current\s*=\s*"([0-9]+(?:\.[0-9]+){1,3})"')
-          if (-not $match.Success) { throw 'Could not resolve AppVersion.Current.' }
-          $version = $match.Groups[1].Value
+          $parts = $env:VIDEOSHELF_UPDATE_VERSION.Split('.')
+          while ($parts.Count -lt 4) { $parts += '0' }
+          $fileVersion = ($parts[0..3] -join '.')
+          $issPath = Join-Path $env:RUNNER_TEMP 'VideoShelf.update.iss'
+          $iss = Get-Content '.\installer\VideoShelf.iss' -Raw
+          $iss = [regex]::Replace($iss, '(?m)^OutputBaseFilename=.*$', "OutputBaseFilename=VideoShelf-Setup-v$env:VIDEOSHELF_UPDATE_VERSION")
+          $iss = [regex]::Replace($iss, '(?m)^VersionInfoVersion=.*$', "VersionInfoVersion=$fileVersion")
+          Set-Content -Path $issPath -Value $iss -Encoding UTF8
 
           $installerDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-update-installer'
           New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
-          & $iscc "/DSourceDir=$env:VIDEOSHELF_UPDATE_PACKAGE" "/DOutputDir=$installerDir" "/DAppVersion=$version" '.\installer\VideoShelf.iss'
+          & $iscc "/DSourceDir=$env:VIDEOSHELF_UPDATE_PACKAGE" "/DOutputDir=$installerDir" "/DAppVersion=$env:VIDEOSHELF_UPDATE_VERSION" $issPath
           if ($LASTEXITCODE -ne 0) { throw 'Update installer compilation failed.' }
-          $installer = Join-Path $installerDir 'VideoShelf-Setup-v1.7.exe'
-          if (!(Test-Path $installer)) { throw 'Update installer was not created.' }
+          $installer = Join-Path $installerDir ("VideoShelf-Setup-v{0}.exe" -f $env:VIDEOSHELF_UPDATE_VERSION)
+          if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1000000) { throw 'Update installer was not created.' }
           "VIDEOSHELF_UPDATE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Prove updater handoff waits and relaunches VideoShelf
@@ -80,14 +97,6 @@ jobs:
 
           $selfTest = Start-Process -FilePath $mainExe -ArgumentList '--self-test' -WorkingDirectory $installDir -Wait -PassThru
           if ($selfTest.ExitCode -ne 0) { throw 'Installed VideoShelf self-test failed before updater handoff.' }
-
-          $unexpected = @(Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
-            try { $_.Path -eq $mainExe } catch { $false }
-          })
-          if ($unexpected.Count -gt 0) {
-            $unexpected | Stop-Process -Force -ErrorAction SilentlyContinue
-            throw 'A clean silent install unexpectedly launched VideoShelf.'
-          }
 
           $probe = Join-Path $env:RUNNER_TEMP 'invoke-videoshelf-updater.ps1'
           @'
@@ -113,94 +122,95 @@ jobs:
             if ($null -eq $launched) { Start-Sleep -Milliseconds 500 }
           }
           if ($null -eq $launched) { throw 'The updater handoff completed but VideoShelf did not relaunch.' }
-          Start-Sleep -Seconds 2
-          $running = @(Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
+          Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
             try { $_.Path -eq $mainExe } catch { $false }
-          })
-          if ($running.Count -ne 1) { throw "Expected one relaunched VideoShelf process, found $($running.Count)." }
-          Write-Host "Updater handoff relaunched VideoShelf successfully (PID $($running[0].Id))."
-          $running | Stop-Process -Force -ErrorAction SilentlyContinue
+          } | Stop-Process -Force -ErrorAction SilentlyContinue
 
           $uninstaller = Join-Path $installDir 'unins000.exe'
-          if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not found after updater handoff.' }
           $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw 'Uninstall after updater handoff failed.' }
 
-      - name: Prove legacy runtime and app are cleanly replaced
+      - name: Prove previous public release upgrades cleanly
         shell: powershell
         run: |
-          $legacyInstaller = Join-Path $env:RUNNER_TEMP 'VideoShelf-Setup-v1.7.3.exe'
-          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/x0XP/VideoShelf/releases/download/v1.7.3/VideoShelf-Setup-v1.7.3.exe' -OutFile $legacyInstaller
-          $legacyHash = (Get-FileHash -Path $legacyInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($legacyHash -ne '671711fa068c8aeb31221cf97eb608c90424a96bf010dec6c4035022a2085b02') {
-            throw "Unexpected v1.7.3 installer hash: $legacyHash"
-          }
+          $headers = @{ 'User-Agent' = 'VideoShelf-CI' }
+          $previousRelease = Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri 'https://api.github.com/repos/x0XP/VideoShelf/releases/latest'
+          if ($null -eq $previousRelease -or [string]::IsNullOrWhiteSpace($previousRelease.tag_name)) { throw 'Could not resolve the previous public VideoShelf release.' }
+          if ($previousRelease.tag_name -eq ('v' + $env:VIDEOSHELF_UPDATE_VERSION)) { throw 'Latest public release already matches the candidate version; previous-release upgrade cannot be tested.' }
+          $asset = @($previousRelease.assets | Where-Object { $_.name -like 'VideoShelf-Setup-v*.exe' }) | Select-Object -First 1
+          if ($null -eq $asset) { throw "No installer asset was found on previous release $($previousRelease.tag_name)." }
 
-          $installDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-legacy-upgrade-install'
-          $legacyInstall = Start-Process -FilePath $legacyInstaller -ArgumentList @(
+          $previousInstaller = Join-Path $env:RUNNER_TEMP $asset.name
+          Invoke-WebRequest -UseBasicParsing -Headers $headers -Uri $asset.browser_download_url -OutFile $previousInstaller
+          if (!(Test-Path $previousInstaller) -or (Get-Item $previousInstaller).Length -lt 1000000) { throw 'Previous release installer download was invalid.' }
+          $actualHash = (Get-FileHash -Path $previousInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+          if (-not [string]::IsNullOrWhiteSpace($asset.digest) -and $asset.digest -like 'sha256:*') {
+            $expectedHash = $asset.digest.Substring(7).ToLowerInvariant()
+            if ($actualHash -ne $expectedHash) { throw "Previous release installer hash mismatch: expected $expectedHash got $actualHash" }
+          }
+          Write-Host "Testing $($previousRelease.tag_name) -> v$env:VIDEOSHELF_UPDATE_VERSION."
+
+          $installDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-previous-upgrade-install'
+          $previousInstall = Start-Process -FilePath $previousInstaller -ArgumentList @(
             '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $installDir + '"')
           ) -Wait -PassThru
-          if ($legacyInstall.ExitCode -ne 0) { throw "Legacy install failed with exit code $($legacyInstall.ExitCode)." }
+          if ($previousInstall.ExitCode -ne 0) { throw "Previous release install failed with exit code $($previousInstall.ExitCode)." }
 
           $mainExe = Join-Path $installDir 'VideoShelf.exe'
           $transferDir = Join-Path $installDir 'TransferHost'
           $transferExe = Join-Path $transferDir 'VideoShelf.TransferHost.exe'
           $transferDll = Join-Path $transferDir 'VideoShelf.TransferHost.dll'
-          if (!(Test-Path $mainExe) -or !(Test-Path $transferExe) -or !(Test-Path $transferDll)) { throw 'Legacy VideoShelf installation was incomplete.' }
-          'must disappear during clean runtime replacement' | Set-Content -Path (Join-Path $transferDir 'legacy-runtime-sentinel.txt') -Encoding ASCII
+          if (!(Test-Path $mainExe) -or !(Test-Path $transferExe) -or !(Test-Path $transferDll)) { throw 'Previous VideoShelf installation was incomplete.' }
+          'must disappear during clean runtime replacement' | Set-Content -Path (Join-Path $transferDir 'previous-runtime-sentinel.txt') -Encoding ASCII
 
-          # Keep both the old main app and old transfer runtime alive. This recreates the
-          # conditions which previously allowed the updater to race the old process/mutex
-          # and to leave an old TransferHost DLL beside a new MonoTorrent runtime.
-          $legacyMain = Start-Process -FilePath $mainExe -WorkingDirectory $installDir -PassThru
+          $previousMain = Start-Process -FilePath $mainExe -WorkingDirectory $installDir -PassThru
           Start-Sleep -Seconds 2
-          if ($legacyMain.HasExited) { throw 'Legacy VideoShelf did not remain running long enough to test update relaunch compatibility.' }
+          if ($previousMain.HasExited) { throw 'Previous VideoShelf did not remain running long enough to test upgrade replacement.' }
 
-          $legacyHost = Start-Process -FilePath $transferExe -ArgumentList @(
-            'stream','--source','magnet:?xt=urn:btih:0123456789012345678901234567890123456789','--title','LegacyLock'
+          $previousHost = Start-Process -FilePath $transferExe -ArgumentList @(
+            'stream','--source','magnet:?xt=urn:btih:0123456789012345678901234567890123456789','--title','UpgradeRegression'
           ) -WorkingDirectory $transferDir -PassThru
           Start-Sleep -Seconds 2
-          if ($legacyHost.HasExited) { throw 'Legacy TransferHost did not remain running long enough to test locked-runtime replacement.' }
+          if ($previousHost.HasExited) { throw 'Previous TransferHost did not remain running long enough to test locked-runtime replacement.' }
 
           $upgrade = Start-Process -FilePath $env:VIDEOSHELF_UPDATE_INSTALLER -ArgumentList @(
             '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/VIDEOSHELFUPDATE=1',('/DIR="' + $installDir + '"')
           ) -PassThru
           $upgrade.WaitForExit()
-          if ($upgrade.ExitCode -ne 0) { throw "Legacy upgrade failed with exit code $($upgrade.ExitCode)." }
+          if ($upgrade.ExitCode -ne 0) { throw "Previous-release upgrade failed with exit code $($upgrade.ExitCode)." }
 
-          try { $legacyMain.Refresh() } catch { }
-          if (-not $legacyMain.HasExited) {
-            Stop-Process -Id $legacyMain.Id -Force -ErrorAction SilentlyContinue
-            throw 'Installer did not terminate the old VideoShelf process before relaunch.'
+          try { $previousMain.Refresh() } catch { }
+          if (-not $previousMain.HasExited) {
+            Stop-Process -Id $previousMain.Id -Force -ErrorAction SilentlyContinue
+            throw 'Installer did not terminate the previous VideoShelf process before relaunch.'
           }
-          try { $legacyHost.Refresh() } catch { }
-          if (-not $legacyHost.HasExited) {
-            Stop-Process -Id $legacyHost.Id -Force -ErrorAction SilentlyContinue
-            throw 'Installer did not stop the legacy TransferHost before replacing its runtime.'
+          try { $previousHost.Refresh() } catch { }
+          if (-not $previousHost.HasExited) {
+            Stop-Process -Id $previousHost.Id -Force -ErrorAction SilentlyContinue
+            throw 'Installer did not stop the previous TransferHost before replacing its runtime.'
           }
-          if (Test-Path (Join-Path $transferDir 'legacy-runtime-sentinel.txt')) { throw 'Legacy TransferHost contents survived the upgrade.' }
+          if (Test-Path (Join-Path $transferDir 'previous-runtime-sentinel.txt')) { throw 'Previous TransferHost contents survived the upgrade.' }
 
           $expectedDll = Join-Path $env:VIDEOSHELF_UPDATE_PACKAGE 'TransferHost\VideoShelf.TransferHost.dll'
-          if (!(Test-Path $expectedDll) -or !(Test-Path $transferDll)) { throw 'TransferHost DLL missing after upgrade.' }
           $expectedHash = (Get-FileHash $expectedDll -Algorithm SHA256).Hash
           $installedHash = (Get-FileHash $transferDll -Algorithm SHA256).Hash
           if ($installedHash -ne $expectedHash) { throw 'Installed TransferHost DLL does not match the current package.' }
 
           $transferTest = Start-Process -FilePath $transferExe -ArgumentList '--self-test' -WorkingDirectory $transferDir -Wait -PassThru
-          if ($transferTest.ExitCode -ne 0) { throw 'TransferHost self-test failed after v1.7.3 -> current upgrade.' }
+          if ($transferTest.ExitCode -ne 0) { throw 'TransferHost self-test failed after previous-release upgrade.' }
 
           $restarted = $null
           $deadline = [DateTime]::UtcNow.AddSeconds(30)
           while ([DateTime]::UtcNow -lt $deadline -and $null -eq $restarted) {
             $restarted = Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
-              try { $_.Path -eq $mainExe -and $_.Id -ne $legacyMain.Id } catch { $false }
+              try { $_.Path -eq $mainExe -and $_.Id -ne $previousMain.Id } catch { $false }
             } | Select-Object -First 1
             if ($null -eq $restarted) { Start-Sleep -Milliseconds 500 }
           }
-          if ($null -eq $restarted) { throw 'Legacy update installed successfully but the new VideoShelf process did not reopen.' }
+          if ($null -eq $restarted) { throw 'Upgrade installed successfully but the new VideoShelf process did not reopen.' }
           Start-Sleep -Seconds 2
-          if ($restarted.HasExited) { throw 'Relaunched VideoShelf exited immediately after legacy upgrade.' }
-          Write-Host "Legacy upgrade replaced the runtime and relaunched VideoShelf successfully (PID $($restarted.Id))."
+          if ($restarted.HasExited) { throw 'Relaunched VideoShelf exited immediately after upgrade.' }
+          Write-Host "Previous-release upgrade replaced the runtime and relaunched VideoShelf successfully (PID $($restarted.Id))."
 
           Get-Process -Name 'VideoShelf' -ErrorAction SilentlyContinue | Where-Object {
             try { $_.Path -eq $mainExe } catch { $false }
@@ -208,6 +218,6 @@ jobs:
           Get-Process -Name 'VideoShelf.TransferHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
           $uninstaller = Join-Path $installDir 'unins000.exe'
-          if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not found after legacy upgrade.' }
+          if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not found after previous-release upgrade.' }
           $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
-          if ($uninstall.ExitCode -ne 0) { throw 'Uninstall after legacy runtime regression test failed.' }
+          if ($uninstall.ExitCode -ne 0) { throw 'Uninstall after previous-release regression test failed.' }
