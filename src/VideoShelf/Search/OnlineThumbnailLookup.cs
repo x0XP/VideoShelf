@@ -16,27 +16,19 @@ using System.Web.Script.Serialization;
 
 namespace VideoShelf {
 sealed class OnlineThumbnailResult : IDisposable {
- public Image Image; public bool FromCache, TemporarilyBlocked; public string Source=""; public string Error="";
+ public Image Image; public bool FromCache,TemporarilyBlocked; public string Source="",Error="";
  public void Dispose(){if(Image!=null){Image.Dispose();Image=null;}}
 }
-
+sealed class ThumbnailIdentity {
+ public string Series="",EpisodeLabel="",CacheIdentity=""; public bool Episodic; public int Season=-1,Episode=-1;
+}
+sealed class ThumbnailCandidate { public Dictionary<string,object> Row; public int Score; }
 static class OnlineThumbnailLookup {
- sealed class ThumbnailIdentity {
-  public string Series="", EpisodeLabel="", CacheIdentity="";
-  public bool Episodic;
-  public int Season=-1, Episode=-1;
- }
- sealed class ThumbnailCandidate {
-  public Dictionary<string,object> Row;
-  public int Score;
- }
-
  static DateTime blockedUntil=DateTime.MinValue;
  static readonly HttpClient http=CreateClient();
  static readonly SemaphoreSlim gate=new SemaphoreSlim(1,1);
  static readonly string cache=AppDataPaths.MigrateDirectory("OnlineThumbnails");
- static readonly string[] stopWords={"the","a","an","and","or","of","in","on","to","for","from","with","part","season"};
-
+ static readonly HashSet<string> stopWords=new HashSet<string>(StringComparer.OrdinalIgnoreCase){"the","and","with","from","this","that","season","episode","part","vol","volume","complete","batch","movie","film","series","anime"};
  static HttpClient CreateClient(){
   ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
   var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};
@@ -103,7 +95,7 @@ static class OnlineThumbnailLookup {
 
  public static string CacheKey(string title){return CacheKey(title,"");}
  public static string CacheKey(string title,string context){
-  string key="v4|"+NormalizedWords(CleanContext(context))+"|"+Identify(title).CacheIdentity;
+  string key="v5|"+NormalizedWords(CleanContext(context))+"|"+Identify(title).CacheIdentity;
   using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Replace("-","");
  }
 
@@ -194,40 +186,40 @@ static class OnlineThumbnailLookup {
  }
 
  static async Task<List<Dictionary<string,object>>> SearchBingRows(string query,CancellationToken ct){
- string cleaned=Regex.Replace((query??""),@"\s*!safeoff\b"," ",RegexOptions.IgnoreCase).Trim();
- string url="https://www.bing.com/images/search?q="+Uri.EscapeDataString(cleaned)+"&form=HDRSC3&first=1&adlt=off";
- string html=Encoding.UTF8.GetString(await Get(url,3*1024*1024,ct).ConfigureAwait(false));
- var rows=new List<Dictionary<string,object>>();
- foreach(Match match in Regex.Matches(html,@"\bm=""(?<meta>\{&quot;.*?\})""",RegexOptions.IgnoreCase|RegexOptions.Singleline)){
-  Dictionary<string,object> meta=null;
-  try{meta=new JavaScriptSerializer{MaxJsonLength=256*1024}.Deserialize<Dictionary<string,object>>(WebUtility.HtmlDecode(match.Groups["meta"].Value));}catch{}
-  if(meta==null)continue;
-  string image=Value(meta,"murl"),thumbnail=Value(meta,"turl");
-  if(image.Length==0&&thumbnail.Length==0)continue;
-  rows.Add(new Dictionary<string,object>{{"image",image},{"thumbnail",thumbnail},{"url",Value(meta,"purl")},{"title",Value(meta,"t")+" "+Value(meta,"desc")}});
-  if(rows.Count>=50)break;
+  string cleaned=Regex.Replace((query??""),@"\s*!safeoff\b"," ",RegexOptions.IgnoreCase).Trim();
+  string url="https://www.bing.com/images/search?q="+Uri.EscapeDataString(cleaned)+"&form=HDRSC3&first=1&adlt=off";
+  string html=Encoding.UTF8.GetString(await Get(url,3*1024*1024,ct).ConfigureAwait(false));
+  var rows=new List<Dictionary<string,object>>();
+  foreach(Match match in Regex.Matches(html,@"\bm=""(?<meta>\{&quot;.*?\})""",RegexOptions.IgnoreCase|RegexOptions.Singleline)){
+   Dictionary<string,object> meta=null;
+   try{meta=new JavaScriptSerializer{MaxJsonLength=256*1024}.Deserialize<Dictionary<string,object>>(WebUtility.HtmlDecode(match.Groups["meta"].Value));}catch{}
+   if(meta==null)continue;
+   string image=Value(meta,"murl"),thumbnail=Value(meta,"turl");
+   if(image.Length==0&&thumbnail.Length==0)continue;
+   rows.Add(new Dictionary<string,object>{{"image",image},{"thumbnail",thumbnail},{"url",Value(meta,"purl")},{"title",Value(meta,"t")+" "+Value(meta,"desc")}});
+   if(rows.Count>=50)break;
+  }
+  return rows;
  }
- return rows;
-}
 
-static async Task<List<Dictionary<string,object>>> SearchRowsWithFallback(string query,CancellationToken ct){
- List<Dictionary<string,object>> primary=null;
- if(DateTime.UtcNow>=blockedUntil){
+ static async Task<List<Dictionary<string,object>>> SearchRowsWithFallback(string query,CancellationToken ct){
+  List<Dictionary<string,object>> primary=null;
+  if(DateTime.UtcNow>=blockedUntil){
+   try{
+    primary=await SearchRows(query,ct).ConfigureAwait(false);
+    if(primary.Count>0)return primary;
+   }catch(OperationCanceledException){throw;}
+    catch(LookupBlockedException){blockedUntil=DateTime.UtcNow.AddMinutes(10);}
+    catch(HttpRequestException){}
+    catch(InvalidDataException){}
+  }
   try{
-   primary=await SearchRows(query,ct).ConfigureAwait(false);
-   if(primary.Count>0)return primary;
-  }catch(OperationCanceledException){throw;}
-   catch(LookupBlockedException){blockedUntil=DateTime.UtcNow.AddMinutes(10);}
-   catch(HttpRequestException){}
-   catch(InvalidDataException){}
+   var fallback=await SearchBingRows(query,ct).ConfigureAwait(false);
+   if(fallback.Count>0)return fallback;
+  }catch(OperationCanceledException){throw;}catch{}
+  return primary??new List<Dictionary<string,object>>();
  }
- try{
-  var fallback=await SearchBingRows(query,ct).ConfigureAwait(false);
-  if(fallback.Count>0)return fallback;
- }catch(OperationCanceledException){throw;}catch{}
- return primary??new List<Dictionary<string,object>>();
-}
-static void Store(string title,string context,Image image,string source){
+ static void Store(string title,string context,Image image,string source){
   Directory.CreateDirectory(cache);string f=FileFor(title,context),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
   try{image.Save(temp,ImageFormat.Jpeg);if(File.Exists(f))File.Delete(f);File.Move(temp,f);File.WriteAllText(f+".source",source??"");}
   finally{if(File.Exists(temp))File.Delete(temp);}
@@ -256,13 +248,18 @@ static void Store(string title,string context,Image image,string source){
   try{
    context=CleanContext(context);ct.ThrowIfCancellationRequested();string f=FileFor(title,context);
    if(File.Exists(f))try{return new OnlineThumbnailResult{Image=DecodeAndFrame(File.ReadAllBytes(f)),FromCache=true,Source=File.Exists(f+".source")?File.ReadAllText(f+".source"):"Cached search result"};}catch{}
-   await Task.Delay(1000,ct).ConfigureAwait(false);
+   await Task.Delay(500,ct).ConfigureAwait(false);
    ThumbnailIdentity id=Identify(title);
    OnlineThumbnailResult result=await FindFromQuery(title,context,id,PrimaryQuery(id,context),ct).ConfigureAwait(false);
-   if(result==null&&id.Episodic){await Task.Delay(500,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
-   if(result==null&&!id.Episodic){await Task.Delay(500,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
+   if(result==null){await Task.Delay(250,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,id,SecondaryQuery(id,context),ct).ConfigureAwait(false);}
+   if(result==null&&context.Length>0){
+    await Task.Delay(250,ct).ConfigureAwait(false);
+    ThumbnailIdentity contextId=Identify(context);
+    result=await FindFromQuery(title,context,contextId,contextId.Series+" screenshot",ct).ConfigureAwait(false);
+    if(result==null){await Task.Delay(200,ct).ConfigureAwait(false);result=await FindFromQuery(title,context,contextId,contextId.Series+" image",ct).ConfigureAwait(false);}
+   }
    if(result!=null)return result;
-   return new OnlineThumbnailResult{Error=id.Episodic?"No episode-specific search-engine thumbnail found.":"No usable search-engine thumbnail found."};
+   return new OnlineThumbnailResult{Error=id.Episodic?"No episode-specific or search-context thumbnail found.":"No usable search-engine thumbnail found."};
   }catch(LookupBlockedException ex){blockedUntil=DateTime.UtcNow.AddMinutes(10);return new OnlineThumbnailResult{Error=ex.Message,TemporarilyBlocked=true};}
    catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;return new OnlineThumbnailResult{Error="Thumbnail lookup timed out."};}
    catch(Exception ex){return new OnlineThumbnailResult{Error=ex.Message};}
