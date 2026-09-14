@@ -8,6 +8,18 @@ using System.Windows.Forms;
 
 namespace VideoShelf {
 static class Program {
+ static Mutex AcquireSingleInstance(bool waitForUpdateRelaunch) {
+  const string instanceName=@"Local\VideoShelf-52B6117F-2222-49BB-935D-8C7FA18DC42B";
+  DateTime deadline=DateTime.UtcNow.AddSeconds(waitForUpdateRelaunch?8:0);
+  while(true){
+   bool ownsInstance;
+   var instance=new Mutex(true,instanceName,out ownsInstance);
+   if(ownsInstance)return instance;
+   instance.Dispose();
+   if(!waitForUpdateRelaunch||DateTime.UtcNow>=deadline)return null;
+   Thread.Sleep(150);
+  }
+ }
  [STAThread] static void Main(string[] args) {
   if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{AppVersion.SelfTest();UpdateService.SelfTest();UpdateProgressForm.SelfTest();FolderNaming.SelfTest();LibraryMediaIntelligence.SelfTest();BuiltInOnlineSearch.SelfTest();OnlineThumbnailLookup.SelfTest();TransferBridge.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int builtInArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--test-built-in-online",StringComparison.OrdinalIgnoreCase));
@@ -24,9 +36,9 @@ static class Program {
   if(detailArg>=0){try{string output=(detailArg+1<args.Length&&args[detailArg+1].Length>0)?args[detailArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero-detail.png");ScreenshotHarness.CaptureReZeroDetail(output);Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
   int screenshotArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--screenshot-rezero",StringComparison.OrdinalIgnoreCase));
   if(screenshotArg>=0){try{string output=(screenshotArg+1<args.Length&&args[screenshotArg+1].Length>0)?args[screenshotArg+1]:Path.Combine(Environment.CurrentDirectory,"VideoShelf-rezero.png");ScreenshotHarness.CaptureReZero(output);Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
-  bool ownsInstance;
-  using(var singleInstance=new Mutex(true,@"Local\VideoShelf-52B6117F-2222-49BB-935D-8C7FA18DC42B",out ownsInstance)){
-   if(!ownsInstance)return;
+  bool updateRelaunch=args!=null&&args.Any(a=>a.Equals("--update-relaunch",StringComparison.OrdinalIgnoreCase));
+  using(var singleInstance=AcquireSingleInstance(updateRelaunch)){
+   if(singleInstance==null)return;
    Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);TransferBridge.WarmDiscovery();var shelf=new Shelf();shelf.FormClosed+=delegate{TransferBridge.StopDiscovery();};shelf.InitializeUpdater();Application.Run(shelf);
   }
  }

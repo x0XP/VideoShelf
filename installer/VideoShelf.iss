@@ -72,7 +72,7 @@ Name: "{autodesktop}\VideoShelf"; Filename: "{app}\VideoShelf.exe"; WorkingDir: 
 
 [Run]
 Filename: "{app}\VideoShelf.exe"; Description: "Launch VideoShelf"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\VideoShelf.exe"; WorkingDir: "{app}"; Flags: nowait; Check: ShouldRelaunchAfterUpdate
+Filename: "{app}\VideoShelf.exe"; Parameters: "--update-relaunch"; WorkingDir: "{app}"; Flags: nowait; Check: ShouldRelaunchAfterUpdate
 
 [Code]
 const
