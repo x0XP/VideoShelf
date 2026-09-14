@@ -1,3 +1,12 @@
+VideoShelf 1.7.11 — 14 September 2026
+--------------------------------------
+- Added selectable subtitle tracks to the built-in streaming player, including Auto, Off and manual track selection.
+- Auto subtitle selection prefers the Windows UI language while deprioritising signs/songs, forced and commentary tracks when a normal dialogue track is available.
+- Added support for matching external subtitle files inside torrents (`.srt`, `.ass`, `.ssa`, `.vtt`, `.sub`, `.sup`) and loading them into LibVLC without delaying video playback.
+- External subtitle matching uses cleaned filenames and episode identifiers so multi-episode torrents do not indiscriminately attach unrelated subtitle files.
+- Added video volume controls with a percentage slider and Mute/Unmute behaviour that restores the previous audible level.
+- Reworked the player transport area into two rows so subtitle and volume controls do not compress the seek timeline.
+
 VideoShelf 1.7.10 — 14 September 2026
 --------------------------------------
 - Improved online thumbnail matching by carrying the original VideoShelf search into image lookup.
