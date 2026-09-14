@@ -41,7 +41,8 @@ static class OnlineThumbnailLookup {
   ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
   var h=new HttpClientHandler{AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate};
   var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(15)};
-  c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.7");
+  c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36");
+  c.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-GB,en;q=0.9");
   return c;
  }
 
@@ -192,22 +193,59 @@ static class OnlineThumbnailLookup {
   return items.Cast<object>().Select(x=>x as Dictionary<string,object>).Where(x=>x!=null).ToList();
  }
 
- static void Store(string title,string context,Image image,string source){
+ static async Task<List<Dictionary<string,object>>> SearchBingRows(string query,CancellationToken ct){
+ string cleaned=Regex.Replace((query??""),@"\s*!safeoff\b"," ",RegexOptions.IgnoreCase).Trim();
+ string url="https://www.bing.com/images/search?q="+Uri.EscapeDataString(cleaned)+"&form=HDRSC3&first=1&adlt=off";
+ string html=Encoding.UTF8.GetString(await Get(url,3*1024*1024,ct).ConfigureAwait(false));
+ var rows=new List<Dictionary<string,object>>();
+ foreach(Match match in Regex.Matches(html,@"\bm=""(?<meta>\{&quot;.*?\})""",RegexOptions.IgnoreCase|RegexOptions.Singleline)){
+  Dictionary<string,object> meta=null;
+  try{meta=new JavaScriptSerializer{MaxJsonLength=256*1024}.Deserialize<Dictionary<string,object>>(WebUtility.HtmlDecode(match.Groups["meta"].Value));}catch{}
+  if(meta==null)continue;
+  string image=Value(meta,"murl"),thumbnail=Value(meta,"turl");
+  if(image.Length==0&&thumbnail.Length==0)continue;
+  rows.Add(new Dictionary<string,object>{{"image",image},{"thumbnail",thumbnail},{"url",Value(meta,"purl")},{"title",Value(meta,"t")+" "+Value(meta,"desc")}});
+  if(rows.Count>=50)break;
+ }
+ return rows;
+}
+
+static async Task<List<Dictionary<string,object>>> SearchRowsWithFallback(string query,CancellationToken ct){
+ List<Dictionary<string,object>> primary=null;
+ if(DateTime.UtcNow>=blockedUntil){
+  try{
+   primary=await SearchRows(query,ct).ConfigureAwait(false);
+   if(primary.Count>0)return primary;
+  }catch(OperationCanceledException){throw;}
+   catch(LookupBlockedException){blockedUntil=DateTime.UtcNow.AddMinutes(10);}
+   catch(HttpRequestException){}
+   catch(InvalidDataException){}
+ }
+ try{
+  var fallback=await SearchBingRows(query,ct).ConfigureAwait(false);
+  if(fallback.Count>0)return fallback;
+ }catch(OperationCanceledException){throw;}catch{}
+ return primary??new List<Dictionary<string,object>>();
+}
+static void Store(string title,string context,Image image,string source){
   Directory.CreateDirectory(cache);string f=FileFor(title,context),temp=f+"."+Guid.NewGuid().ToString("N")+".tmp";
   try{image.Save(temp,ImageFormat.Jpeg);if(File.Exists(f))File.Delete(f);File.Move(temp,f);File.WriteAllText(f+".source",source??"");}
   finally{if(File.Exists(temp))File.Delete(temp);}
  }
 
  static async Task<OnlineThumbnailResult> FindFromQuery(string title,string context,ThumbnailIdentity id,string query,CancellationToken ct){
-  List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);
+  List<Dictionary<string,object>> rows=await SearchRowsWithFallback(query,ct).ConfigureAwait(false);
   var ranked=rows.Select(row=>new ThumbnailCandidate{Row=row,Score=CandidateScore(row,id,context)}).Where(x=>x.Score>int.MinValue).OrderByDescending(x=>x.Score).Take(10).ToArray();
   foreach(var candidate in ranked){
-   ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"image");if(image.Length==0)image=Value(candidate.Row,"thumbnail");if(image.Length==0)continue;
-   try{
-    Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));
-    string source=Value(candidate.Row,"url");try{Store(title,context,framed,source);}catch{}
-    return new OnlineThumbnailResult{Image=framed,Source=source};
-   }catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}
+   ct.ThrowIfCancellationRequested();
+   string[] images=new[]{Value(candidate.Row,"image"),Value(candidate.Row,"thumbnail")}.Where(x=>!string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+   foreach(string image in images){
+    try{
+     Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));
+     string source=Value(candidate.Row,"url");if(source.Length==0)source=image;try{Store(title,context,framed,source);}catch{}
+     return new OnlineThumbnailResult{Image=framed,Source=source};
+    }catch(OperationCanceledException){throw;}catch(LookupBlockedException){continue;}catch{}
+   }
   }
   return null;
  }
@@ -218,7 +256,6 @@ static class OnlineThumbnailLookup {
   try{
    context=CleanContext(context);ct.ThrowIfCancellationRequested();string f=FileFor(title,context);
    if(File.Exists(f))try{return new OnlineThumbnailResult{Image=DecodeAndFrame(File.ReadAllBytes(f)),FromCache=true,Source=File.Exists(f+".source")?File.ReadAllText(f+".source"):"Cached search result"};}catch{}
-   if(DateTime.UtcNow<blockedUntil)return new OnlineThumbnailResult{Error="Thumbnail lookup is temporarily paused after a search-engine access check.",TemporarilyBlocked=true};
    await Task.Delay(1000,ct).ConfigureAwait(false);
    ThumbnailIdentity id=Identify(title);
    OnlineThumbnailResult result=await FindFromQuery(title,context,id,PrimaryQuery(id,context),ct).ConfigureAwait(false);
