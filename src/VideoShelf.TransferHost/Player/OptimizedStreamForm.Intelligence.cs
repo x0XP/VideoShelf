@@ -8,6 +8,7 @@ internal sealed partial class OptimizedStreamForm
     readonly DarkComboBox audioChoice = new() { Width = 160, EmptyText = "Audio" };
     readonly List<AudioOption> audioOptions = new();
     string audioSignature = "";
+    string preferredAudioName = "";
     bool suppressAudioChange;
     int audioSelection = AudioOption.AutoId;
     int adaptiveNetworkCacheMs = 5000;
@@ -43,6 +44,7 @@ internal sealed partial class OptimizedStreamForm
         audioChoice.EmptyText = "Audio";
         audioSignature = "";
         audioSelection = AudioOption.AutoId;
+        nextTrackRefreshUtc = DateTime.MinValue;
         suppressAudioChange = false;
     }
 
@@ -75,9 +77,21 @@ internal sealed partial class OptimizedStreamForm
         foreach (var track in tracks) audioOptions.Add(track);
         foreach (var option in audioOptions) audioChoice.Items.Add(option);
 
-        int selectedIndex;
-        if (audioSelection == AudioOption.AutoId) selectedIndex = 0;
-        else
+        int selectedIndex = 0;
+        if (preferredAudioName.Length > 0)
+        {
+            int preferredIndex = tracks.FindIndex(x => x.Name.Equals(preferredAudioName, StringComparison.OrdinalIgnoreCase));
+            if (preferredIndex >= 0)
+            {
+                audioSelection = tracks[preferredIndex].Id;
+                selectedIndex = preferredIndex + 1;
+            }
+            else
+            {
+                audioSelection = AudioOption.AutoId;
+            }
+        }
+        else if (audioSelection != AudioOption.AutoId)
         {
             selectedIndex = audioOptions.FindIndex(x => x.Id == audioSelection);
             if (selectedIndex < 0)
@@ -126,15 +140,15 @@ internal sealed partial class OptimizedStreamForm
             var tokens = System.Text.RegularExpressions.Regex.Split(label, @"[^\p{L}\p{N}]+")
                 .Where(x => x.Length > 0)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            int score = 0;
+            int score = 1;
             if (two.Length > 1 && tokens.Contains(two)) score += 8;
             if (three.Length > 2 && tokens.Contains(three)) score += 9;
             if (englishName.Length > 2 && label.Contains(englishName, StringComparison.OrdinalIgnoreCase)) score += 10;
-            if (nativeName.Length > 2 && label.Contains(nativeName, StringComparison.OrdinalIgnoreCase)) score += 9;
+            if (nativeName.Length > 2 && !nativeName.Equals(englishName, StringComparison.OrdinalIgnoreCase) && label.Contains(nativeName, StringComparison.OrdinalIgnoreCase)) score += 9;
             if (label.Contains("main", StringComparison.OrdinalIgnoreCase) || label.Contains("default", StringComparison.OrdinalIgnoreCase)) score += 2;
-            if (label.Contains("commentary", StringComparison.OrdinalIgnoreCase)) score -= 12;
-            if (label.Contains("description", StringComparison.OrdinalIgnoreCase) || label.Contains("descriptive", StringComparison.OrdinalIgnoreCase)) score -= 6;
-            if (score > bestScore && score > 0) { bestScore = score; bestId = track.Id; }
+            if (label.Contains("commentary", StringComparison.OrdinalIgnoreCase)) score -= 30;
+            if (label.Contains("description", StringComparison.OrdinalIgnoreCase) || label.Contains("descriptive", StringComparison.OrdinalIgnoreCase)) score -= 30;
+            if (score > bestScore) { bestScore = score; bestId = track.Id; }
         }
         return bestId;
     }
@@ -147,9 +161,15 @@ internal sealed partial class OptimizedStreamForm
         AudioOption option = audioOptions[index];
         audioSelection = option.Id;
         if (option.Id == AudioOption.AutoId)
+        {
+            preferredAudioName = "";
             ApplyAutoAudio(player, audioOptions.Where(t => t.Id >= 0).ToList());
+        }
         else
+        {
+            preferredAudioName = option.Name;
             player.SetAudioTrack(option.Id);
+        }
     }
 
     static async Task<StreamingTorrentSession> CreateStreamingSessionAsync(string stateRoot, string temporaryRoot, CancellationToken token)
@@ -186,6 +206,23 @@ internal sealed partial class OptimizedStreamForm
                 if (t.Status == TaskStatus.RanToCompletion) try { t.Result.Dispose(); } catch { }
             }, TaskScheduler.Default);
             throw new TimeoutException("The playback engine took too long to initialise. Please retry the stream.");
+        }
+        return await startup;
+    }
+
+    static async Task<MediaPlayer> CreateMediaPlayerAsync(LibVLC library, CancellationToken token)
+    {
+        Task<MediaPlayer> startup = Task.Run(() => new MediaPlayer(library), token);
+        Task delay = Task.Delay(TimeSpan.FromSeconds(8), token);
+        Task completed = await Task.WhenAny(startup, delay);
+        if (!ReferenceEquals(completed, startup))
+        {
+            token.ThrowIfCancellationRequested();
+            _ = startup.ContinueWith(t =>
+            {
+                if (t.Status == TaskStatus.RanToCompletion) try { t.Result.Dispose(); } catch { }
+            }, TaskScheduler.Default);
+            throw new TimeoutException("The media player took too long to initialise. Please retry the stream.");
         }
         return await startup;
     }
@@ -266,5 +303,13 @@ internal sealed partial class OptimizedStreamForm
         };
         if (ChoosePreferredAudioId(tracks, CultureInfo.GetCultureInfo("en-GB")) != 2)
             throw new InvalidOperationException("Language-aware audio selection did not prefer the normal matching language track.");
+
+        var commentaryOnlyMatch = new List<AudioOption>
+        {
+            new AudioOption(4, "Japanese Stereo"),
+            new AudioOption(5, "English Commentary")
+        };
+        if (ChoosePreferredAudioId(commentaryOnlyMatch, CultureInfo.GetCultureInfo("en-GB")) != 4)
+            throw new InvalidOperationException("Automatic audio selection preferred commentary over a normal audio track.");
     }
 }
