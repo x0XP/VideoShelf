@@ -5,6 +5,7 @@ VideoShelf 1.7.15 — 14 September 2026
 - Artwork loading now tries both the original image and provider thumbnail for each candidate so one blocked image URL no longer aborts the entire lookup.
 - Removed the global DuckDuckGo cooldown short-circuit so fallback image providers can continue supplying artwork while DuckDuckGo is temporarily paused.
 - Repaired the separate collection-artwork lookup path with the same provider fallback and candidate retry behaviour.
+- Added a final search-context artwork fallback so overly specific torrent/release titles still receive relevant artwork instead of leaving result cards blank; refreshed the online-thumbnail cache identity so prior failed matches are not reused.
 - Added a required live-artwork regression workflow that must fetch a real online-result image and render real collection artwork into a VideoShelf screenshot before image changes are accepted.
 
 VideoShelf 1.7.14 — 14 September 2026
