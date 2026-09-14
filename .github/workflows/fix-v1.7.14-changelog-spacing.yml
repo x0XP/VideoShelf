@@ -1,0 +1,36 @@
+name: Fix v1.7.14 changelog spacing
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/fix-v1.7.14-changelog-spacing.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Add section spacing and remove one-shot workflow
+        shell: pwsh
+        run: |
+          $path = 'CHANGELOG.md'
+          $text = Get-Content $path -Raw
+          $needle = '- Preserved the compact subtitle/volume player controls and corrected transport layout introduced in v1.7.13.' + "`n" + 'VideoShelf 1.7.13'
+          $replacement = '- Preserved the compact subtitle/volume player controls and corrected transport layout introduced in v1.7.13.' + "`n`n" + 'VideoShelf 1.7.13'
+          if (-not $text.Contains($needle)) { throw 'Changelog spacing target was not found.' }
+          $text = $text.Replace($needle, $replacement)
+          Set-Content -Path $path -Value $text -NoNewline -Encoding utf8
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm '.github/workflows/fix-v1.7.14-changelog-spacing.yml'
+          git add CHANGELOG.md
+          git commit -m 'Fix v1.7.14 changelog spacing'
+          git push origin HEAD:main
