@@ -1,0 +1,33 @@
+name: Apply media player intelligence
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools/apply-media-player-intelligence.py'
+      - '.github/workflows/apply-media-player-intelligence.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Apply source changes
+        run: python3 tools/apply-media-player-intelligence.py
+      - name: Commit source changes
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add VideoShelf.csproj src/VideoShelf src/VideoShelf.TransferHost
+          if git diff --cached --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Improve playback and library intelligence'
+          git push origin HEAD:main
