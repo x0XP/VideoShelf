@@ -5,7 +5,10 @@ internal enum PlayerIconKind
     Play,
     Pause,
     FullScreen,
-    ExitFullScreen
+    ExitFullScreen,
+    Subtitles,
+    Volume,
+    VolumeMuted
 }
 
 internal sealed class PlayerIconButton : Control
@@ -90,6 +93,18 @@ internal sealed class PlayerIconButton : Control
             case PlayerIconKind.ExitFullScreen:
                 DrawFullScreen(g, pen, cx, cy, true);
                 break;
+
+            case PlayerIconKind.Subtitles:
+                DrawSubtitles(g, pen, cx, cy);
+                break;
+
+            case PlayerIconKind.Volume:
+                DrawVolume(g, pen, fill, cx, cy, false);
+                break;
+
+            case PlayerIconKind.VolumeMuted:
+                DrawVolume(g, pen, fill, cx, cy, true);
+                break;
         }
 
         if (Focused)
@@ -123,6 +138,48 @@ internal sealed class PlayerIconButton : Control
             g.DrawLine(pen, cx + inner, cy + inner, cx + outer, cy + inner);
             g.DrawLine(pen, cx + inner, cy + inner, cx + inner, cy + outer);
         }
+    }
+
+    static void DrawSubtitles(Graphics g, Pen pen, int cx, int cy)
+    {
+        Rectangle caption = new(cx - 10, cy - 7, 20, 14);
+        g.DrawRectangle(pen, caption);
+        using var linePen = new Pen(pen.Color, 1.6f)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round
+        };
+        g.DrawLine(linePen, cx - 6, cy, cx - 1, cy);
+        g.DrawLine(linePen, cx + 2, cy, cx + 6, cy);
+        g.DrawLine(linePen, cx - 6, cy + 4, cx, cy + 4);
+        g.DrawLine(linePen, cx + 3, cy + 4, cx + 6, cy + 4);
+    }
+
+    static void DrawVolume(Graphics g, Pen pen, Brush fill, int cx, int cy, bool muted)
+    {
+        g.FillRectangle(fill, cx - 10, cy - 3, 4, 6);
+        g.FillPolygon(fill, new[]
+        {
+            new Point(cx - 6, cy - 4),
+            new Point(cx, cy - 9),
+            new Point(cx, cy + 9),
+            new Point(cx - 6, cy + 4)
+        });
+
+        if (muted)
+        {
+            g.DrawLine(pen, cx + 4, cy - 5, cx + 11, cy + 5);
+            g.DrawLine(pen, cx + 11, cy - 5, cx + 4, cy + 5);
+            return;
+        }
+
+        using var arcPen = new Pen(pen.Color, 1.8f)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round
+        };
+        g.DrawArc(arcPen, cx - 2, cy - 6, 11, 12, -55, 110);
+        g.DrawArc(arcPen, cx - 4, cy - 9, 17, 18, -52, 104);
     }
 
     protected override void OnMouseEnter(EventArgs e)
