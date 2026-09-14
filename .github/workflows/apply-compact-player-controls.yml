@@ -22,19 +22,16 @@ jobs:
         run: |
           $path = 'src/VideoShelf.TransferHost/Player/OptimizedStreamForm.cs'
           $text = Get-Content $path -Raw
-          $old = @'
-          Resize += (_, _) => LayoutPlayer();
-          LayoutPlayer();
-          '@
-          $new = @'
+          $pattern = '(?m)^\s*Resize \+= \(_, _\) => LayoutPlayer\(\);\r?\n\s*LayoutPlayer\(\);'
+          $replacement = @'
           InitializeCompactPlayerControls(bottom);
           Resize += (_, _) => { LayoutPlayer(); LayoutCompactPlayerControls(); };
           LayoutPlayer();
           LayoutCompactPlayerControls();
           '@
-          if (-not $text.Contains($old)) { throw 'Expected player layout block was not found.' }
-          $text = $text.Replace($old, $new)
-          Set-Content -Path $path -Value $text -NoNewline -Encoding utf8
+          $updated = [regex]::Replace($text, $pattern, $replacement, 1)
+          if ($updated -eq $text) { throw 'Expected player layout block was not found.' }
+          Set-Content -Path $path -Value $updated -NoNewline -Encoding utf8
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
