@@ -285,8 +285,10 @@ internal sealed partial class OptimizedStreamForm : Form
         volume.ValueCommitted += (_, _) => CommitVolume();
         seek.ValueCommitted += (_, _) => CommitSeek();
         uiTimer.Tick += (_, _) => RefreshStats();
-        Resize += (_, _) => LayoutPlayer();
-        LayoutPlayer();
+InitializeCompactPlayerControls(bottom);
+Resize += (_, _) => { LayoutPlayer(); LayoutCompactPlayerControls(); };
+LayoutPlayer();
+LayoutCompactPlayerControls();
     }
 
     void ConfigureFixture()
