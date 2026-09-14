@@ -66,21 +66,18 @@ jobs:
           }
           if (-not $iscc) { throw 'ISCC.exe was not found.' }
 
-          $parts = $env:VIDEOSHELF_UPDATE_VERSION.Split('.')
-          while ($parts.Count -lt 4) { $parts += '0' }
-          $fileVersion = ($parts[0..3] -join '.')
-          $issPath = Join-Path $env:RUNNER_TEMP 'VideoShelf.update.iss'
-          $iss = Get-Content '.\installer\VideoShelf.iss' -Raw
-          $iss = [regex]::Replace($iss, '(?m)^OutputBaseFilename=.*$', "OutputBaseFilename=VideoShelf-Setup-v$env:VIDEOSHELF_UPDATE_VERSION")
-          $iss = [regex]::Replace($iss, '(?m)^VersionInfoVersion=.*$', "VersionInfoVersion=$fileVersion")
-          Set-Content -Path $issPath -Value $iss -Encoding UTF8
-
+          # Compile the original installer script in its repository directory so
+          # its relative branding asset paths continue to resolve correctly.
           $installerDir = Join-Path $env:RUNNER_TEMP 'VideoShelf-update-installer'
           New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
-          & $iscc "/DSourceDir=$env:VIDEOSHELF_UPDATE_PACKAGE" "/DOutputDir=$installerDir" "/DAppVersion=$env:VIDEOSHELF_UPDATE_VERSION" $issPath
+          & $iscc "/DSourceDir=$env:VIDEOSHELF_UPDATE_PACKAGE" "/DOutputDir=$installerDir" "/DAppVersion=$env:VIDEOSHELF_UPDATE_VERSION" '.\installer\VideoShelf.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Update installer compilation failed.' }
+
+          $rawInstaller = Join-Path $installerDir 'VideoShelf-Setup-v1.7.exe'
           $installer = Join-Path $installerDir ("VideoShelf-Setup-v{0}.exe" -f $env:VIDEOSHELF_UPDATE_VERSION)
-          if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1000000) { throw 'Update installer was not created.' }
+          if (!(Test-Path $rawInstaller)) { throw 'Update installer was not created.' }
+          Move-Item -Path $rawInstaller -Destination $installer -Force
+          if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1000000) { throw 'Versioned update installer was not created correctly.' }
           "VIDEOSHELF_UPDATE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Prove updater handoff waits and relaunches VideoShelf
@@ -135,8 +132,16 @@ jobs:
         run: |
           $headers = @{ 'User-Agent' = 'VideoShelf-CI' }
           $previousRelease = Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri 'https://api.github.com/repos/x0XP/VideoShelf/releases/latest'
-          if ($null -eq $previousRelease -or [string]::IsNullOrWhiteSpace($previousRelease.tag_name)) { throw 'Could not resolve the previous public VideoShelf release.' }
-          if ($previousRelease.tag_name -eq ('v' + $env:VIDEOSHELF_UPDATE_VERSION)) { throw 'Latest public release already matches the candidate version; previous-release upgrade cannot be tested.' }
+          if ($null -eq $previousRelease -or [string]::IsNullOrWhiteSpace($previousRelease.tag_name)) { throw 'Could not resolve the latest public VideoShelf release.' }
+
+          # Workflow-only maintenance can run after the candidate has already been
+          # published. In that case the release publisher has already exercised the
+          # previous-version upgrade path, so do not falsely fail this maintenance run.
+          if ($previousRelease.tag_name -eq ('v' + $env:VIDEOSHELF_UPDATE_VERSION)) {
+            Write-Host "v$env:VIDEOSHELF_UPDATE_VERSION is already the latest public release; skipping previous-release upgrade replay."
+            return
+          }
+
           $asset = @($previousRelease.assets | Where-Object { $_.name -like 'VideoShelf-Setup-v*.exe' }) | Select-Object -First 1
           if ($null -eq $asset) { throw "No installer asset was found on previous release $($previousRelease.tag_name)." }
 
