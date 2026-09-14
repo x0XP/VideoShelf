@@ -1,3 +1,14 @@
+VideoShelf 1.7.12 — 14 September 2026
+--------------------------------------
+- Added selectable audio tracks to the built-in streaming player, including language-aware Auto mode and manual track selection.
+- Improved automatic audio selection so normal programme audio is preferred over commentary and descriptive tracks, while preserving a manually selected track across player refreshes when possible.
+- Added adaptive torrent prebuffering and LibVLC cache sizing based on conservative observed swarm throughput so strong swarms start sooner without overestimating slower connections.
+- Moved torrent-engine, LibVLC and MediaPlayer initialisation behind asynchronous startup guards with bounded timeouts to prevent the player window hanging indefinitely on Preparing stream.
+- Hardened stream cancellation and shutdown so closing the player does not wait indefinitely on native VLC or torrent cleanup, and suppresses late startup errors after the window is already closing.
+- Throttled audio/subtitle track discovery to reduce unnecessary native polling while playback is active.
+- Added local-library media intelligence for recognised episodic files, including episode codes, season grouping and episode-aware ordering.
+- Expanded absolute episode recognition to support four-digit episode numbers such as E1142.
+
 VideoShelf 1.7.11 — 14 September 2026
 --------------------------------------
 - Added selectable subtitle tracks to the built-in streaming player, including Auto, Off and manual track selection.
