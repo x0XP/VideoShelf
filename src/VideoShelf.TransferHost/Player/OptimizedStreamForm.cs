@@ -360,6 +360,7 @@ internal sealed partial class OptimizedStreamForm : Form
             status.Text = metadataWasCached ? "Metadata cached • connecting" : "Connecting • retrieving metadata";
             videoOverlay.Text = metadataWasCached ? "Preparing cached torrent metadata…" : "Retrieving torrent metadata…";
             await torrentManager.StartAsync();
+            if (closing || cts.IsCancellationRequested) return;
             if (!torrentManager.HasMetadata && !await WaitForMetadataWithTimeoutAsync(torrentManager, InitialMetadataWait, cts.Token))
             {
                 status.Text = "Retrying torrent metadata discovery…";
@@ -367,6 +368,7 @@ internal sealed partial class OptimizedStreamForm : Form
                 await StopForMetadataRetryAsync(torrentManager, cts.Token);
                 await Task.Delay(350, cts.Token);
                 await torrentManager.StartAsync();
+            if (closing || cts.IsCancellationRequested) return;
                 if (!await WaitForMetadataWithTimeoutAsync(torrentManager, RetryMetadataWait, cts.Token))
                     throw new InvalidOperationException("Torrent metadata could not be retrieved after retrying. The swarm may currently have no reachable peers; try again later or choose another result.");
             }
@@ -383,7 +385,8 @@ internal sealed partial class OptimizedStreamForm : Form
             status.Text = "Preparing playback engine…";
             var localVlc = await CreateLibVlcAsync(cts.Token);
             vlc = localVlc;
-            var mediaPlayer = new MediaPlayer(localVlc);
+            var mediaPlayer = await CreateMediaPlayerAsync(localVlc, cts.Token);
+            if (closing || cts.IsCancellationRequested) { mediaPlayer.Dispose(); return; }
             player = mediaPlayer;
             mediaPlayer.Volume = currentVolume;
             UpdateVolumeUi();
@@ -395,6 +398,7 @@ internal sealed partial class OptimizedStreamForm : Form
         catch (OperationCanceledException) { if (!closing) Close(); }
         catch (Exception ex)
         {
+            if (closing || IsDisposed || Disposing) return;
             video.Visible = false; videoOverlay.Visible = true; videoOverlay.Text = "Unable to start this stream"; status.Text = ex.Message;
             MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
@@ -492,7 +496,8 @@ internal sealed partial class OptimizedStreamForm : Form
                 selected = file; playPause.Enabled = false; seek.Enabled = false;
                 ResetAudioChoices();
                 ResetSubtitleChoices();
-                try { activePlayer.Stop(); } catch { }
+                try { await Task.Run(() => { try { activePlayer.Stop(); } catch { } }, cts.Token); }
+                catch (OperationCanceledException) { throw; }
                 currentMedia?.Dispose(); currentMedia = null; await DisposeHttpStreamAsync();
                 var externalSubtitles = FindMatchingSubtitleFiles(activeManager.Files, file, playable.Count == 1);
                 foreach (var item in activeManager.Files)
@@ -802,9 +807,23 @@ internal sealed partial class OptimizedStreamForm : Form
         {
             try
             {
-                try{player?.Stop();}catch{}
-                currentMedia?.Dispose();currentMedia=null;await DisposeHttpStreamAsync();video.MediaPlayer=null;player?.Dispose();vlc?.Dispose();
-                if(session!=null)await session.DisposeAsync();
+                try{video.MediaPlayer=null;}catch{}
+                Media? oldMedia=currentMedia;currentMedia=null;
+                MediaPlayer? oldPlayer=player;player=null;
+                LibVLC? oldVlc=vlc;vlc=null;
+                StreamingTorrentSession? oldSession=session;session=null;
+                object? oldHttp=currentHttpStream;currentHttpStream=null;
+                Task cleanup=Task.Run(async () =>
+                {
+                    try{oldPlayer?.Stop();}catch{}
+                    try{oldMedia?.Dispose();}catch{}
+                    if(oldHttp!=null)await DisposeObjectAsync(oldHttp);
+                    try{oldPlayer?.Dispose();}catch{}
+                    try{oldVlc?.Dispose();}catch{}
+                    if(oldSession!=null)try{await oldSession.DisposeAsync();}catch{}
+                });
+                Task finished=await Task.WhenAny(cleanup,Task.Delay(TimeSpan.FromSeconds(4)));
+                if(ReferenceEquals(finished,cleanup))try{await cleanup;}catch{}
             }
             finally{try{playbackGate.Release();}catch{}}
             try{playbackGate.Dispose();}catch{}
