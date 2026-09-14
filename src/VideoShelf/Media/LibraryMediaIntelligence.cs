@@ -22,7 +22,7 @@ static class LibraryMediaIntelligence {
   if(!match.Success)match=Regex.Match(probe,@"(?<![A-Za-z0-9])(?<s>\d{1,2})x(?<e>\d{1,3})(?!\d)",RegexOptions.IgnoreCase);
   bool explicitSeason=match.Success;
   if(!match.Success)match=Regex.Match(probe,@"(?<![A-Za-z0-9])(?:episode|ep)[ ._-]*(?<e>\d{1,4})(?:v\d+)?\b",RegexOptions.IgnoreCase);
-  if(!match.Success)match=Regex.Match(probe,@"\s-\s(?:episode\s*)?(?<e>\d{1,3})(?:v\d+)?(?:\s|$)",RegexOptions.IgnoreCase);
+  if(!match.Success)match=Regex.Match(probe,@"\s-\s(?:episode\s*)?(?<e>\d{1,4})(?:v\d+)?(?:\s|$)",RegexOptions.IgnoreCase);
   if(!match.Success)return info;
 
   int episode;
@@ -83,6 +83,8 @@ static class LibraryMediaIntelligence {
   if(!tv.IsEpisode||tv.Season!=2||tv.Episode!=7||tv.EpisodeCode!="S02E07")throw new InvalidOperationException("Library season/episode recognition failed.");
   var anime=Analyze("[Group] Example Series - 82 (1080p).mkv","Example Series","");
   if(!anime.IsEpisode||anime.Episode!=82||anime.Season!=-1)throw new InvalidOperationException("Library absolute episode recognition failed.");
+  var longAnime=Analyze("[Group] Long Running Series - 1142 (1080p).mkv","Long Running Series","");
+  if(!longAnime.IsEpisode||longAnime.Episode!=1142||longAnime.EpisodeCode!="E1142")throw new InvalidOperationException("Library four-digit absolute episode recognition failed.");
   var movie=Analyze("Example.Movie.2026.1080p.mkv","Example Movie","");
   if(movie.IsEpisode)throw new InvalidOperationException("Library intelligence misclassified a normal movie filename as an episode.");
  }
