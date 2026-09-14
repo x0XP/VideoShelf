@@ -150,12 +150,14 @@ internal sealed class StreamingTorrentSession : IAsyncDisposable, IDisposable
                 throw new InvalidOperationException("Streaming session shutdown must remain bounded.");
             if (OptimizedStreamForm.CalculatePrebufferBytes(1024L * 1024 * 1024) < 8L * 1024 * 1024)
                 throw new InvalidOperationException("Streaming prebuffer target is too small.");
+            OptimizedStreamForm.AdaptiveStreamingSelfTest();
+            OptimizedStreamForm.AudioSelectionSelfTest();
         }
         finally { try { Directory.Delete(root, true); } catch { } }
     }
 }
 
-internal sealed class OptimizedStreamForm : Form
+internal sealed partial class OptimizedStreamForm : Form
 {
     static readonly HashSet<string> Playable = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".vob" };
     static readonly HashSet<string> SubtitleFiles = new(StringComparer.OrdinalIgnoreCase) { ".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup" };
@@ -245,13 +247,14 @@ internal sealed class OptimizedStreamForm : Form
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 94, BackColor = Theme.Background };
         playPause.SetBounds(22, 9, 90, 34); playPause.Enabled = false;
         stop.SetBounds(122, 9, 80, 34);
-        subtitleChoice.SetBounds(216, 11, 180, 31); subtitleChoice.Enabled = false;
-        mute.SetBounds(410, 9, 64, 34);
-        volume.SetBounds(484, 11, 110, 30);
-        volumeLabel.SetBounds(600, 15, 48, 22); volumeLabel.TextAlign = ContentAlignment.MiddleLeft; volumeLabel.ForeColor = Color.FromArgb(190, 205, 220);
+        audioChoice.SetBounds(216, 11, 160, 31); audioChoice.Enabled = false;
+        subtitleChoice.SetBounds(384, 11, 170, 31); subtitleChoice.Enabled = false;
+        mute.SetBounds(562, 9, 64, 34);
+        volume.SetBounds(636, 11, 100, 30);
+        volumeLabel.SetBounds(742, 15, 48, 22); volumeLabel.TextAlign = ContentAlignment.MiddleLeft; volumeLabel.ForeColor = Color.FromArgb(190, 205, 220);
         seek.SetBounds(22, 55, 848, 30); seek.Anchor = AnchorStyles.Left | AnchorStyles.Top;
         timeLabel.SetBounds(880, 59, 150, 22); timeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left; timeLabel.TextAlign = ContentAlignment.MiddleRight; timeLabel.ForeColor = Color.FromArgb(190, 205, 220);
-        bottom.Controls.AddRange(new Control[] { playPause, stop, subtitleChoice, mute, volume, volumeLabel, seek, timeLabel });
+        bottom.Controls.AddRange(new Control[] { playPause, stop, audioChoice, subtitleChoice, mute, volume, volumeLabel, seek, timeLabel });
         Controls.Add(videoHost); Controls.Add(bottom); Controls.Add(top);
 
         if (fixtureMode)
@@ -274,6 +277,7 @@ internal sealed class OptimizedStreamForm : Form
                     await PlayFileAsync(playable[fileChoice.SelectedIndex]);
             };
         }
+        audioChoice.SelectedIndexChanged += (_, _) => ApplyAudioSelection();
         subtitleChoice.SelectedIndexChanged += (_, _) => ApplySubtitleSelection();
         playPause.Click += (_, _) => TogglePlayback();
         stop.Click += (_, _) => Close();
@@ -292,6 +296,7 @@ internal sealed class OptimizedStreamForm : Form
         fileChoice.Items.Add("Season 01/Example.S01E03.1080p.mkv  (1.5 GB)");
         fileChoice.SelectedIndex = 0;
         fileChoice.Enabled = true;
+        ConfigureFixtureAudio();
         subtitleOptions.Add(new SubtitleOption(SubtitleOption.AutoId, "Subtitles: Auto (English)"));
         subtitleOptions.Add(new SubtitleOption(-1, "Subtitles: Off"));
         subtitleOptions.Add(new SubtitleOption(11, "English"));
@@ -312,12 +317,15 @@ internal sealed class OptimizedStreamForm : Form
     void LayoutPlayer()
     {
         status.Width = Math.Max(180, ClientSize.Width - status.Left - 22);
-        int subtitleWidth = ClientSize.Width < 900 ? 150 : 180;
-        subtitleChoice.SetBounds(216, 11, subtitleWidth, 31);
-        mute.SetBounds(subtitleChoice.Right + 10, 9, 64, 34);
-        int volumeWidth = ClientSize.Width < 900 ? 88 : 110;
-        volume.SetBounds(mute.Right + 10, 11, volumeWidth, 30);
-        volumeLabel.SetBounds(volume.Right + 6, 15, 48, 22);
+        bool compact = ClientSize.Width < 900;
+        int audioWidth = compact ? 120 : 160;
+        int subtitleWidth = compact ? 130 : 170;
+        audioChoice.SetBounds(216, 11, audioWidth, 31);
+        subtitleChoice.SetBounds(audioChoice.Right + 8, 11, subtitleWidth, 31);
+        mute.SetBounds(subtitleChoice.Right + 8, 9, 64, 34);
+        int volumeWidth = compact ? 76 : 100;
+        volume.SetBounds(mute.Right + 8, 11, volumeWidth, 30);
+        volumeLabel.SetBounds(volume.Right + 6, 15, 44, 22);
 
         int timeWidth = 150;
         int timeX = Math.Max(260, ClientSize.Width - 22 - timeWidth);
@@ -331,7 +339,7 @@ internal sealed class OptimizedStreamForm : Form
         {
             Directory.CreateDirectory(cache);
             Directory.CreateDirectory(discoveryCache);
-            var streamSession = new StreamingTorrentSession(discoveryCache, Path.Combine(cache, "metadata"));
+            var streamSession = await CreateStreamingSessionAsync(discoveryCache, Path.Combine(cache, "metadata"), cts.Token);
             session = streamSession;
             TorrentManager torrentManager;
             try
@@ -343,7 +351,7 @@ internal sealed class OptimizedStreamForm : Form
                 status.Text = "Direct metadata unavailable • using peer discovery";
                 videoOverlay.Text = "Direct torrent metadata was unavailable…\n\nFalling back to peer discovery";
                 await streamSession.DisposeAsync();
-                streamSession = new StreamingTorrentSession(discoveryCache, Path.Combine(cache, "metadata-fallback"));
+                streamSession = await CreateStreamingSessionAsync(discoveryCache, Path.Combine(cache, "metadata-fallback"), cts.Token);
                 session = streamSession;
                 torrentManager = await streamSession.AddAsync(fallbackSource, cache, cts.Token);
             }
@@ -372,8 +380,8 @@ internal sealed class OptimizedStreamForm : Form
             foreach (var file in playable) fileChoice.Items.Add($"{file.Path}  ({FormatSize(file.Length)})");
             fileChoice.EndUpdate(); fileChoice.Enabled = true;
 
-            Core.Initialize();
-            var localVlc = new LibVLC("--no-video-title-show", "--network-caching=5000", "--file-caching=5000", "--clock-jitter=0", "--clock-synchro=0");
+            status.Text = "Preparing playback engine…";
+            var localVlc = await CreateLibVlcAsync(cts.Token);
             vlc = localVlc;
             var mediaPlayer = new MediaPlayer(localVlc);
             player = mediaPlayer;
@@ -442,17 +450,26 @@ internal sealed class OptimizedStreamForm : Form
         while (readTotal < target)
         {
             if (request != playbackRevision || closing) throw new OperationCanceledException();
-            int want = (int)Math.Min(buffer.Length, target - readTotal);
+            int want = (int)Math.Min(buffer.Length, Math.Max(1, target - readTotal));
             int read = await warm.ReadAsync(buffer.AsMemory(0, want), cts.Token);
             if (read <= 0) break;
             readTotal += read;
+            double measuredBytes = clock.Elapsed.TotalSeconds > 0.5 ? readTotal / clock.Elapsed.TotalSeconds : 0;
+            double swarmBytes = activeManager.Monitor.DownloadRate;
+            double rateBytes = Math.Max(measuredBytes, swarmBytes);
+            if (readTotal >= 1024L * 1024L && rateBytes > 0)
+            {
+                target = CalculateAdaptivePrebufferBytes(file.Length, rateBytes, readTotal);
+                adaptiveNetworkCacheMs = CalculateAdaptiveNetworkCacheMs(rateBytes);
+                adaptiveRateBytesPerSecond = rateBytes;
+                adaptivePrebufferBytes = target;
+            }
             double mb = readTotal / (1024d * 1024d), totalMb = target / (1024d * 1024d);
-            double measured = clock.Elapsed.TotalSeconds > 0.5 ? mb / clock.Elapsed.TotalSeconds : 0;
-            double swarm = activeManager.Monitor.DownloadRate / (1024d * 1024d);
-            double rate = Math.Max(measured, swarm);
-            status.Text = $"Buffering {mb:0.0}/{totalMb:0.0} MB • {rate:0.0} MB/s";
+            double rate = rateBytes / (1024d * 1024d);
+            status.Text = $"Buffering {mb:0.0}/{totalMb:0.0} MB • {rate:0.0} MB/s • adaptive";
             videoOverlay.Text = $"Buffering selected video…\n\n{mb:0.0} / {totalMb:0.0} MB";
         }
+        adaptivePrebufferBytes = Math.Max(adaptivePrebufferBytes, readTotal);
     }
 
     async Task PlayFileAsync(ITorrentManagerFile file)
@@ -470,6 +487,7 @@ internal sealed class OptimizedStreamForm : Form
                 if (request != playbackRevision || closing || activeManager == null || activeSession == null || activePlayer == null || activeVlc == null) return;
                 var streamProvider = activeManager.StreamProvider ?? throw new InvalidOperationException("Torrent streaming provider is unavailable.");
                 selected = file; playPause.Enabled = false; seek.Enabled = false;
+                ResetAudioChoices();
                 ResetSubtitleChoices();
                 try { activePlayer.Stop(); } catch { }
                 currentMedia?.Dispose(); currentMedia = null; await DisposeHttpStreamAsync();
@@ -484,9 +502,12 @@ internal sealed class OptimizedStreamForm : Form
                 if (request != playbackRevision || closing) { await DisposeObjectAsync(httpStream); return; }
                 currentHttpStream = httpStream;
                 currentMedia = new Media(activeVlc, new Uri(activeSession.StreamingUrl(httpStream.RelativeUri)));
+                currentMedia.AddOption(":network-caching=" + adaptiveNetworkCacheMs.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                currentMedia.AddOption(":file-caching=" + adaptiveNetworkCacheMs.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 bool started = activePlayer.Play(currentMedia);
                 if (!started) throw new InvalidOperationException("LibVLC could not start playback for the selected torrent file.");
                 playPause.Text = "Pause"; playPause.Enabled = true; seek.Enabled = true; video.Visible = true; videoOverlay.Visible = false;
+                RefreshAudioChoices();
                 RefreshSubtitleChoices();
                 _ = LoadExternalSubtitlesAsync(externalSubtitles, request);
             }
@@ -747,9 +768,10 @@ internal sealed class OptimizedStreamForm : Form
 
     void RefreshStats()
     {
+        RefreshAudioChoices();
         RefreshSubtitleChoices();
         if (manager != null && selected != null && currentMedia != null)
-            status.Text = $"{manager.State} • {manager.Monitor.DownloadRate / (1024d * 1024d):0.0} MB/s • buffered local stream";
+            status.Text = $"{manager.State} • {manager.Monitor.DownloadRate / (1024d * 1024d):0.0} MB/s • adaptive {adaptiveNetworkCacheMs / 1000d:0.0}s cache";
         if (player != null && player.Length > 0)
         {
             if (!seek.Focused) seek.Value = Math.Max(0, Math.Min(1000, (int)(player.Time * 1000d / player.Length)));

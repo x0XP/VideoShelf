@@ -36,6 +36,7 @@
     <Compile Include="src\VideoShelf\UI\Controls\MockupFilter.cs" />
     <Compile Include="src\VideoShelf\Infrastructure\FolderManagement.cs" />
     <Compile Include="src\VideoShelf\Media\TransferBridge.cs" />
+    <Compile Include="src\VideoShelf\Media\LibraryMediaIntelligence.cs" />
     <Compile Include="src\VideoShelf\Application\AppVersion.cs" />
     <Compile Include="src\VideoShelf\Application\UpdateService.cs" />
     <Compile Include="src\VideoShelf\Application\VideoShelf.cs" />
