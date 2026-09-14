@@ -66,11 +66,8 @@ jobs:
         shell: powershell
         run: |
           $refEndpoint = "repos/x0XP/VideoShelf/git/ref/tags/$($env:RELEASE_TAG)"
-          gh api $refEndpoint *> $env:RUNNER_TEMP\existing-tag.json
-          if ($LASTEXITCODE -ne 0) {
-            gh api --method POST repos/x0XP/VideoShelf/git/refs -f "ref=refs/tags/$($env:RELEASE_TAG)" -f "sha=$($env:RELEASE_SOURCE)" | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'GitHub API could not create the v1.7.15 tag.' }
-          }
+          gh api --method POST repos/x0XP/VideoShelf/git/refs -f "ref=refs/tags/$($env:RELEASE_TAG)" -f "sha=$($env:RELEASE_SOURCE)" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub API could not create the v1.7.15 tag.' }
           $tag = gh api $refEndpoint | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Could not read back the v1.7.15 tag.' }
           if ($tag.object.type -ne 'commit' -or $tag.object.sha -ne $env:RELEASE_SOURCE) {
