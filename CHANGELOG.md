@@ -1,3 +1,12 @@
+VideoShelf 1.7.15 — 14 September 2026
+--------------------------------------
+- Restored online-result screenshots/thumbnails and collection artwork after image providers began rejecting VideoShelf's old application-style requests.
+- Switched automatic artwork requests to a browser-compatible request profile and added Bing Images as a fallback when DuckDuckGo is challenged, rate-limited or unavailable.
+- Artwork loading now tries both the original image and provider thumbnail for each candidate so one blocked image URL no longer aborts the entire lookup.
+- Removed the global DuckDuckGo cooldown short-circuit so fallback image providers can continue supplying artwork while DuckDuckGo is temporarily paused.
+- Repaired the separate collection-artwork lookup path with the same provider fallback and candidate retry behaviour.
+- Added a required live-artwork regression workflow that must fetch a real online-result image and render real collection artwork into a VideoShelf screenshot before image changes are accepted.
+
 VideoShelf 1.7.14 — 14 September 2026
 --------------------------------------
 - Hardened update relaunch so the newly installed VideoShelf waits briefly for the previous instance mutex to clear instead of exiting immediately during a tight upgrade handoff.
