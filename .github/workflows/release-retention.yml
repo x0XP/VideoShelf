@@ -1,0 +1,25 @@
+name: Keep latest public release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP_TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Remove superseded public releases
+        shell: bash
+        run: |
+          gh api repos/x0XP/VideoShelf/releases --paginate --jq '.[].tag_name' | while IFS= read -r tag; do
+            if [ -n "$tag" ] && [ "$tag" != "$KEEP_TAG" ]; then
+              gh release delete "$tag" --repo x0XP/VideoShelf --yes
+            fi
+          done
