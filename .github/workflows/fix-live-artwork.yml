@@ -26,7 +26,11 @@ jobs:
 
           $uaPattern = 'c\.DefaultRequestHeaders\.UserAgent\.ParseAdd\("VideoShelf/1\.7"\);'
           if ($text -notmatch $uaPattern) { throw 'Thumbnail User-Agent line was not found.' }
-          $text = [regex]::Replace($text,$uaPattern,'c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36");' + "`n  c.DefaultRequestHeaders.AcceptLanguage.ParseAdd(\"en-GB,en;q=0.9\");",1)
+          $uaReplacement = @'
+          c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36");
+            c.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-GB,en;q=0.9");
+          '@
+          $text = [regex]::Replace($text,$uaPattern,$uaReplacement.TrimEnd(),1)
 
           $storeMarker = 'static void Store(string title,string context,Image image,string source){'
           if (-not $text.Contains($storeMarker)) { throw 'Store method marker was not found.' }
