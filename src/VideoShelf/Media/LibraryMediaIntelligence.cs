@@ -87,3 +87,4 @@ static class LibraryMediaIntelligence {
   if(movie.IsEpisode)throw new InvalidOperationException("Library intelligence misclassified a normal movie filename as an episode.");
  }
 }
+}
