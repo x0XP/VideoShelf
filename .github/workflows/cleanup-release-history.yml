@@ -1,0 +1,46 @@
+name: Clean public release history
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/cleanup-release-history.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Shorten current release notes
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## VideoShelf v1.7.10
+
+          - Better thumbnail matching by using the original search as context.
+          - Improved episode-specific image lookup and refreshed thumbnail caching.
+          - Stronger Safe Search-off requests with original images preferred where available.
+          - Slightly slower image requests to reduce unnecessary search-engine rate limiting.
+          EOF
+          gh release edit v1.7.10 --repo x0XP/VideoShelf --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Remove superseded public releases
+        shell: bash
+        run: |
+          for tag in v1.7.1 v1.7.2 v1.7.3 v1.7.4 v1.7.5 v1.7.6 v1.7.7 v1.7.8 v1.7.9; do
+            if gh release view "$tag" --repo x0XP/VideoShelf >/dev/null 2>&1; then
+              gh release delete "$tag" --repo x0XP/VideoShelf --yes
+            fi
+          done
+
+      - name: Verify public release list
+        shell: bash
+        run: |
+          releases="$(gh api repos/x0XP/VideoShelf/releases --jq '.[].tag_name')"
+          test "$releases" = "v1.7.10"
