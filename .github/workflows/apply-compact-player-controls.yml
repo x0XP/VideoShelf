@@ -17,24 +17,60 @@ jobs:
         with:
           ref: main
           fetch-depth: 1
-      - name: Wire compact controls into stream form
+      - name: Fix transport layout around compact controls
         shell: pwsh
         run: |
-          $path = 'src/VideoShelf.TransferHost/Player/OptimizedStreamForm.cs'
+          $path = 'src/VideoShelf.TransferHost/Player/FullscreenPlayerController.cs'
           $text = Get-Content $path -Raw
-          $pattern = '(?m)^\s*Resize \+= \(_, _\) => LayoutPlayer\(\);\r?\n\s*LayoutPlayer\(\);'
+          $pattern = '(?s)    void RelayoutControls\(\)\s*\{.*?\n    \}\n\n    void OnFormClosed'
           $replacement = @'
-          InitializeCompactPlayerControls(bottom);
-          Resize += (_, _) => { LayoutPlayer(); LayoutCompactPlayerControls(); };
-          LayoutPlayer();
-          LayoutCompactPlayerControls();
+              void RelayoutControls()
+              {
+                  if (disposed || bottomBar.IsDisposed) return;
+
+                  const int iconWidth = 42;
+                  const int timeWidth = 150;
+                  int right = form.ClientSize.Width - 22;
+                  int fullX = Math.Max(100, right - iconWidth);
+                  int volumeX = fullX - 8 - iconWidth;
+                  int subtitleX = volumeX - 8 - iconWidth;
+
+                  PlayerIconButton? subtitle = bottomBar.Controls.OfType<PlayerIconButton>()
+                      .FirstOrDefault(b => !ReferenceEquals(b, playPause) && !ReferenceEquals(b, fullScreen)
+                          && (b.AccessibleName?.StartsWith("Subtitles", StringComparison.OrdinalIgnoreCase) ?? false));
+                  PlayerIconButton? volumeControl = bottomBar.Controls.OfType<PlayerIconButton>()
+                      .FirstOrDefault(b => !ReferenceEquals(b, playPause) && !ReferenceEquals(b, fullScreen)
+                          && (b.AccessibleName?.StartsWith("Volume", StringComparison.OrdinalIgnoreCase) ?? false));
+                  DarkComboBox? audio = bottomBar.Controls.OfType<DarkComboBox>().FirstOrDefault(c => c.Visible);
+
+                  playPause.SetBounds(22, 9, iconWidth, 34);
+                  if (audio != null)
+                  {
+                      int audioWidth = form.ClientSize.Width < 900 ? 120 : 160;
+                      audio.SetBounds(76, 11, audioWidth, 31);
+                  }
+                  if (subtitle != null) subtitle.SetBounds(subtitleX, 9, iconWidth, 34);
+                  if (volumeControl != null) volumeControl.SetBounds(volumeX, 9, iconWidth, 34);
+                  fullScreen.SetBounds(fullX, 9, iconWidth, 34);
+
+                  int timeX = Math.Max(260, form.ClientSize.Width - 22 - timeWidth);
+                  timeLabel.SetBounds(timeX, 59, timeWidth, 22);
+                  seek.SetBounds(22, 55, Math.Max(140, timeX - 34), 30);
+
+                  playPause.BringToFront();
+                  subtitle?.BringToFront();
+                  volumeControl?.BringToFront();
+                  fullScreen.BringToFront();
+              }
+
+              void OnFormClosed
           '@
           $updated = [regex]::Replace($text, $pattern, $replacement, 1)
-          if ($updated -eq $text) { throw 'Expected player layout block was not found.' }
+          if ($updated -eq $text) { throw 'FullscreenPlayerController.RelayoutControls block was not found.' }
           Set-Content -Path $path -Value $updated -NoNewline -Encoding utf8
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add $path
-          git commit -m 'Use compact subtitle and volume player controls'
+          git commit -m 'Fix streaming player transport layout'
           git push origin HEAD:main
