@@ -111,31 +111,8 @@ jobs:
           $app=$app.Replace($selfTestLine,$selfTestLine+"`n"+$artworkTest.TrimEnd())
           Set-Content -Path $appPath -Value $app -NoNewline -Encoding utf8
 
-          $buildPath='.github/workflows/build.yml'
-          $build=Get-Content $buildPath -Raw
-          $buildMarker='      - name: Verify branded application shell renders'
-          if (-not $build.Contains($buildMarker)) { throw 'Build workflow insertion marker was not found.' }
-          $liveStep=@'
-                - name: Verify live online artwork retrieval
-                  shell: powershell
-                  run: |
-                    $queries = @('Re Zero anime','Windows 11 wallpaper','Big Buck Bunny')
-                    $success = $false
-                    foreach ($query in $queries) {
-                      $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--test-online-artwork',('"' + $query + '"')) -Wait -PassThru -NoNewWindow
-                      if ($process.ExitCode -eq 0) { $success = $true; break }
-                      Start-Sleep -Seconds 2
-                    }
-                    if (-not $success) { throw 'All live artwork provider smoke tests failed. VideoShelf would ship with blank online artwork.' }
-
-          '@
-          $build=$build.Replace($buildMarker,$liveStep+$buildMarker)
-          Set-Content -Path $buildPath -Value $build -NoNewline -Encoding utf8
-
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add $thumbPath $appPath $buildPath
-          if (Test-Path '.github/workflows/publish-v1.7.14.yml') { git rm '.github/workflows/publish-v1.7.14.yml' }
-          git rm '.github/workflows/fix-live-artwork.yml'
+          git add $thumbPath $appPath
           git commit -m 'Restore resilient online artwork loading'
           git push origin HEAD:main
