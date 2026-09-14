@@ -45,7 +45,11 @@ internal sealed partial class OptimizedStreamForm
 
     void OnEpisodeEndReached(object? sender, EventArgs e)
     {
-        if (sender is not MediaPlayer endedPlayer) return;
+        // LibVLCSharp does not require consumers to rely on the event sender identity.
+        // Capture the player instance we explicitly subscribed so auto-next still works
+        // if a runtime supplies a different sender object for EndReached.
+        MediaPlayer? endedPlayer = episodeNavigationPlayer;
+        if (endedPlayer == null) return;
         int endedRevision = Volatile.Read(ref playbackRevision);
         if (closing || IsDisposed || Disposing || !IsHandleCreated) return;
 
