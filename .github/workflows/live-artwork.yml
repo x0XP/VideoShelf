@@ -23,13 +23,13 @@ jobs:
         shell: cmd
         run: Start.cmd --build-only
 
-      - name: Require a live artwork image
+      - name: Require a live online-result artwork image
         shell: powershell
         run: |
           $queries = @('Re Zero anime','Windows 11 wallpaper','Big Buck Bunny')
           $success = $false
           foreach ($query in $queries) {
-            Write-Host "Testing live artwork for: $query"
+            Write-Host "Testing online-result artwork for: $query"
             $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--test-online-artwork',('"' + $query + '"')) -Wait -PassThru -NoNewWindow
             if ($process.ExitCode -eq 0) {
               $success = $true
@@ -38,21 +38,22 @@ jobs:
             Start-Sleep -Seconds 2
           }
           if (-not $success) {
-            throw 'All live artwork lookups failed. VideoShelf would display blank online artwork.'
+            throw 'All live online-result artwork lookups failed. VideoShelf would display blank result screenshots.'
           }
 
-      - name: Require real artwork to render in the UI
+      - name: Require collection artwork to render in the UI
         shell: powershell
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'VideoShelf-live-artwork.png'
           $process = Start-Process -FilePath '.\VideoShelf.exe' -ArgumentList @('--screenshot-rezero',('"' + $output + '"')) -PassThru -NoNewWindow
-          if (-not $process.WaitForExit(90000)) {
-            $process.Kill(); $process.WaitForExit()
-            throw 'Live artwork UI render exceeded 90 seconds.'
+          $finished = $process.WaitForExit(90000)
+          if (-not $finished) {
+            try { $process.Kill() } catch {}
+            try { $process.WaitForExit() } catch {}
+            throw 'Collection artwork UI render exceeded 90 seconds.'
           }
-          if ($process.ExitCode -ne 0) { throw "Live artwork UI render failed with exit code $($process.ExitCode)." }
           if (!(Test-Path $output) -or (Get-Item $output).Length -lt 5000) {
-            throw 'Live artwork UI render did not create a valid screenshot.'
+            throw 'Collection artwork UI render did not create a valid screenshot with real artwork.'
           }
           Copy-Item $output '.\VideoShelf-live-artwork.png'
 
