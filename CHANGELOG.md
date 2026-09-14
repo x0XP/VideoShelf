@@ -2,6 +2,7 @@ VideoShelf 1.7.14 — 14 September 2026
 --------------------------------------
 - Hardened update relaunch so the newly installed VideoShelf waits briefly for the previous instance mutex to clear instead of exiting immediately during a tight upgrade handoff.
 - Preserved the compact subtitle/volume player controls and corrected transport layout introduced in v1.7.13.
+
 VideoShelf 1.7.13 — 14 September 2026
 --------------------------------------
 - Reworked the streaming-player transport layout so playback controls no longer overlap the seek timeline.
