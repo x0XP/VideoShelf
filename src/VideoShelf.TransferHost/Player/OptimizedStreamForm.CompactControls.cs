@@ -55,9 +55,7 @@ internal sealed partial class OptimizedStreamForm
         mute.Parent = volumePopupPanel;
         volume.Parent = volumePopupPanel;
         volumeLabel.Parent = volumePopupPanel;
-        mute.SetBounds(10, 13, 66, 34);
-        volume.SetBounds(86, 15, 108, 30);
-        volumeLabel.SetBounds(200, 19, 40, 22);
+        LayoutVolumePopupContents();
         mute.Visible = true;
         volume.Visible = true;
         volumeLabel.Visible = true;
@@ -74,18 +72,33 @@ internal sealed partial class OptimizedStreamForm
 
         // These handlers run after the existing player handlers via BeginInvoke so the
         // icon/tooltip reflects the newly committed volume or mute state.
-        volume.ValueCommitted += (_, _) => BeginInvoke((Action)UpdateCompactVolumeUi);
-        mute.Click += (_, _) => BeginInvoke((Action)UpdateCompactVolumeUi);
-        subtitleChoice.SelectedIndexChanged += (_, _) => BeginInvoke((Action)UpdateSubtitleTooltip);
+        volume.ValueCommitted += (_, _) => QueueCompactUiRefresh(UpdateCompactVolumeUi);
+        mute.Click += (_, _) => QueueCompactUiRefresh(UpdateCompactVolumeUi);
+        subtitleChoice.SelectedIndexChanged += (_, _) => QueueCompactUiRefresh(UpdateSubtitleTooltip);
 
         UpdateCompactVolumeUi();
         UpdateSubtitleTooltip();
+    }
+
+    void QueueCompactUiRefresh(Action action)
+    {
+        if (IsDisposed || Disposing || !IsHandleCreated) return;
+        try { BeginInvoke(action); } catch (InvalidOperationException) { }
     }
 
     void LayoutCompactPlayerControls()
     {
         subtitleButton.SetBounds(audioChoice.Right + 8, 9, 42, 34);
         volumeButton.SetBounds(subtitleButton.Right + 8, 9, 42, 34);
+        LayoutVolumePopupContents();
+    }
+
+    void LayoutVolumePopupContents()
+    {
+        if (volumePopupPanel == null) return;
+        mute.SetBounds(10, 13, 66, 34);
+        volume.SetBounds(86, 15, 108, 30);
+        volumeLabel.SetBounds(200, 19, 40, 22);
     }
 
     void ShowSubtitleMenu()
@@ -143,6 +156,7 @@ internal sealed partial class OptimizedStreamForm
     void ShowVolumePopup()
     {
         UpdateCompactVolumeUi();
+        LayoutVolumePopupContents();
         if (volumePopup.Visible)
         {
             volumePopup.Close(ToolStripDropDownCloseReason.CloseCalled);
