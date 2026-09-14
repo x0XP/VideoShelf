@@ -1,4 +1,5 @@
 using LibVLCSharp.Shared;
+using MonoTorrent.Client;
 
 namespace VideoShelf.TransferHost;
 
