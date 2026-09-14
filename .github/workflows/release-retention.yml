@@ -3,20 +3,41 @@ name: Keep latest public release
 on:
   release:
     types: [published]
+  repository_dispatch:
+    types: [videoshelf_release_published]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   cleanup:
-    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      KEEP_TAG: ${{ github.event.release.tag_name }}
     steps:
+      - name: Resolve release to keep
+        id: keep
+        shell: bash
+        env:
+          RELEASE_EVENT_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG: ${{ github.event.client_payload.tag_name }}
+        run: |
+          tag="$RELEASE_EVENT_TAG"
+          if [ -z "$tag" ]; then tag="$DISPATCH_TAG"; fi
+          if [ -z "$tag" ]; then
+            tag="$(gh api repos/x0XP/VideoShelf/releases/latest --jq '.tag_name')"
+          fi
+          if [ -z "$tag" ]; then
+            echo 'Could not resolve the stable release to retain.' >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Remove superseded public releases
         shell: bash
+        env:
+          KEEP_TAG: ${{ steps.keep.outputs.tag }}
         run: |
           gh api repos/x0XP/VideoShelf/releases --paginate --jq '.[].tag_name' | while IFS= read -r tag; do
             if [ -n "$tag" ] && [ "$tag" != "$KEEP_TAG" ]; then
