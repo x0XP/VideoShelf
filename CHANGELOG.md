@@ -1,3 +1,11 @@
+VideoShelf 1.7.13 — 14 September 2026
+--------------------------------------
+- Reworked the streaming-player transport layout so playback controls no longer overlap the seek timeline.
+- Replaced the persistent Subtitles combo box with a compact caption icon and dark popup track menu while preserving Auto, Off and manual subtitle selection.
+- Collapsed the persistent mute button, volume slider and percentage readout behind a compact speaker icon; the full volume controls now appear only when requested.
+- Grouped subtitle, volume and fullscreen controls on the right side of the upper transport row, with playback/audio controls on the left and seek/time controls on a dedicated lower row.
+- Added custom-drawn subtitle, volume and muted-volume icons matching the existing VideoShelf player controls.
+
 VideoShelf 1.7.12 — 14 September 2026
 --------------------------------------
 - Added selectable audio tracks to the built-in streaming player, including language-aware Auto mode and manual track selection.
