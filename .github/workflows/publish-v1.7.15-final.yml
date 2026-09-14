@@ -137,11 +137,15 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git fetch origin "refs/tags/$env:RELEASE_TAG:refs/tags/$env:RELEASE_TAG" 2>$null
-          if ($LASTEXITCODE -ne 0) {
+          $tagRef = "refs/tags/$($env:RELEASE_TAG)"
+          $remoteTag = git ls-remote --tags origin $tagRef
+          if ([string]::IsNullOrWhiteSpace(($remoteTag -join ''))) {
             git tag -a $env:RELEASE_TAG $env:RELEASE_SOURCE -m "VideoShelf $env:RELEASE_TAG"
-            git push origin "refs/tags/$env:RELEASE_TAG"
+            git push origin $tagRef
             if ($LASTEXITCODE -ne 0) { throw 'Could not create the v1.7.15 tag.' }
+          } else {
+            git fetch origin "$tagRef`:$tagRef"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the existing v1.7.15 tag.' }
           }
           $tagged = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
           if ($tagged -ne $env:RELEASE_SOURCE) { throw "Tag points to $tagged instead of $env:RELEASE_SOURCE." }
