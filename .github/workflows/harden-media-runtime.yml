@@ -1,0 +1,72 @@
+name: Harden media runtime
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/harden-media-runtime.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Harden adaptive streaming and close behavior
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/VideoShelf.TransferHost/Player/OptimizedStreamForm.Intelligence.cs')
+          s = p.read_text(encoding='utf-8')
+          old = '    double adaptiveRateBytesPerSecond;\n'
+          new = '    double adaptiveRateBytesPerSecond;\n    DateTime nextTrackRefreshUtc = DateTime.MinValue;\n'
+          if old not in s: raise SystemExit('intelligence field anchor missing')
+          s = s.replace(old, new, 1)
+
+          anchor = '''    internal static int CalculateAdaptiveNetworkCacheMs(double bytesPerSecond)\n    {\n'''
+          helper = '''    internal static double ChooseConservativeObservedRate(double measuredBytesPerSecond, double swarmBytesPerSecond)\n    {\n        measuredBytesPerSecond = Math.Max(0, measuredBytesPerSecond);\n        swarmBytesPerSecond = Math.Max(0, swarmBytesPerSecond);\n        if (measuredBytesPerSecond > 0 && swarmBytesPerSecond > 0)\n            return Math.Min(measuredBytesPerSecond, swarmBytesPerSecond);\n        return Math.Max(measuredBytesPerSecond, swarmBytesPerSecond);\n    }\n\n    async Task<bool> WaitForPlaybackGateOnCloseAsync()\n    {\n        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(4));\n        try\n        {\n            await playbackGate.WaitAsync(deadline.Token);\n            return true;\n        }\n        catch (OperationCanceledException)\n        {\n            return false;\n        }\n    }\n\n'''
+          if anchor not in s: raise SystemExit('adaptive helper anchor missing')
+          s = s.replace(anchor, helper + anchor, 1)
+
+          old = '''        if (CalculateAdaptiveNetworkCacheMs(16d * 1024 * 1024) >= CalculateAdaptiveNetworkCacheMs(1d * 1024 * 1024))\n            throw new InvalidOperationException("Adaptive network caching no longer expands on slower swarms.");\n'''
+          new = old + '''        double conservative = ChooseConservativeObservedRate(40d * 1024 * 1024, 1d * 1024 * 1024);\n        if (conservative > 1.01d * 1024 * 1024)\n            throw new InvalidOperationException("Adaptive throughput estimation became optimistic compared with the swarm rate.");\n'''
+          if old not in s: raise SystemExit('adaptive self-test anchor missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('src/VideoShelf.TransferHost/Player/OptimizedStreamForm.cs')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''        var streamProvider = activeManager.StreamProvider ?? throw new InvalidOperationException("Torrent streaming provider is unavailable.");\n        long target = CalculatePrebufferBytes(file.Length), readTotal = 0;\n'''
+          new = '''        var streamProvider = activeManager.StreamProvider ?? throw new InvalidOperationException("Torrent streaming provider is unavailable.");\n        adaptiveNetworkCacheMs = 5000;\n        adaptivePrebufferBytes = 0;\n        adaptiveRateBytesPerSecond = 0;\n        long target = CalculatePrebufferBytes(file.Length), readTotal = 0;\n'''
+          if old not in s: raise SystemExit('prebuffer reset anchor missing')
+          s = s.replace(old, new, 1)
+
+          old = '''            double measuredBytes = clock.Elapsed.TotalSeconds > 0.5 ? readTotal / clock.Elapsed.TotalSeconds : 0;\n            double swarmBytes = activeManager.Monitor.DownloadRate;\n            double rateBytes = Math.Max(measuredBytes, swarmBytes);\n            if (readTotal >= 1024L * 1024L && rateBytes > 0)\n'''
+          new = '''            double measuredBytes = clock.Elapsed.TotalSeconds >= 1.0 ? readTotal / clock.Elapsed.TotalSeconds : 0;\n            double swarmBytes = activeManager.Monitor.DownloadRate;\n            double rateBytes = ChooseConservativeObservedRate(measuredBytes, swarmBytes);\n            if (readTotal >= 2L * 1024L * 1024L && clock.Elapsed.TotalSeconds >= 1.0 && rateBytes > 0)\n'''
+          if old not in s: raise SystemExit('rate estimator anchor missing')
+          s = s.replace(old, new, 1)
+
+          old = '''    void RefreshStats()\n    {\n        RefreshAudioChoices();\n        RefreshSubtitleChoices();\n'''
+          new = '''    void RefreshStats()\n    {\n        DateTime now = DateTime.UtcNow;\n        if (now >= nextTrackRefreshUtc)\n        {\n            nextTrackRefreshUtc = now.AddSeconds(1);\n            RefreshAudioChoices();\n            RefreshSubtitleChoices();\n        }\n'''
+          if old not in s: raise SystemExit('track refresh anchor missing')
+          s = s.replace(old, new, 1)
+
+          old = '''        try{await playbackGate.WaitAsync();}catch{}\n        try\n        {\n            try{player?.Stop();}catch{}\n            currentMedia?.Dispose();currentMedia=null;await DisposeHttpStreamAsync();video.MediaPlayer=null;player?.Dispose();vlc?.Dispose();\n            if(session!=null)await session.DisposeAsync();\n        }\n        finally{try{playbackGate.Release();}catch{}}\n        playbackGate.Dispose();cts.Dispose();try{Directory.Delete(cache,true);}catch{}\n        e.Cancel=false;BeginInvoke(Close);\n'''
+          new = '''        bool gateHeld=false;\n        try{gateHeld=await WaitForPlaybackGateOnCloseAsync();}catch{}\n        if(gateHeld)\n        {\n            try\n            {\n                try{player?.Stop();}catch{}\n                currentMedia?.Dispose();currentMedia=null;await DisposeHttpStreamAsync();video.MediaPlayer=null;player?.Dispose();vlc?.Dispose();\n                if(session!=null)await session.DisposeAsync();\n            }\n            finally{try{playbackGate.Release();}catch{}}\n            try{playbackGate.Dispose();}catch{}\n            try{cts.Dispose();}catch{}\n            try{Directory.Delete(cache,true);}catch{}\n        }\n        else\n        {\n            // Cancellation has already been requested. Do not hold the window open forever\n            // if a third-party native/torrent call refuses to return. The process will reclaim\n            // the remaining temporary resources when this host exits.\n            try{video.MediaPlayer=null;}catch{}\n        }\n        e.Cancel=false;BeginInvoke(Close);\n'''
+          if old not in s: raise SystemExit('close anchor missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit hardening
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/VideoShelf.TransferHost/Player/OptimizedStreamForm.cs src/VideoShelf.TransferHost/Player/OptimizedStreamForm.Intelligence.cs
+          git commit -m 'Harden adaptive playback and player shutdown'
+          git push origin HEAD:main
