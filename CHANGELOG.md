@@ -5,6 +5,7 @@ VideoShelf 1.7.13 — 14 September 2026
 - Collapsed the persistent mute button, volume slider and percentage readout behind a compact speaker icon; the full volume controls now appear only when requested.
 - Grouped subtitle, volume and fullscreen controls on the right side of the upper transport row, with playback/audio controls on the left and seek/time controls on a dedicated lower row.
 - Added custom-drawn subtitle, volume and muted-volume icons matching the existing VideoShelf player controls.
+- Hardened update relaunch so the newly installed VideoShelf waits briefly for the previous instance mutex to clear instead of exiting immediately during a tight upgrade handoff.
 
 VideoShelf 1.7.12 — 14 September 2026
 --------------------------------------
