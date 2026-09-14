@@ -13,6 +13,7 @@ internal sealed partial class OptimizedStreamForm
     int adaptiveNetworkCacheMs = 5000;
     long adaptivePrebufferBytes;
     double adaptiveRateBytesPerSecond;
+    DateTime nextTrackRefreshUtc = DateTime.MinValue;
 
     sealed class AudioOption
     {
@@ -205,6 +206,29 @@ internal sealed partial class OptimizedStreamForm
         return Math.Max(1, target);
     }
 
+    internal static double ChooseConservativeObservedRate(double measuredBytesPerSecond, double swarmBytesPerSecond)
+    {
+        measuredBytesPerSecond = Math.Max(0, measuredBytesPerSecond);
+        swarmBytesPerSecond = Math.Max(0, swarmBytesPerSecond);
+        if (measuredBytesPerSecond > 0 && swarmBytesPerSecond > 0)
+            return Math.Min(measuredBytesPerSecond, swarmBytesPerSecond);
+        return Math.Max(measuredBytesPerSecond, swarmBytesPerSecond);
+    }
+
+    async Task<bool> WaitForPlaybackGateOnCloseAsync()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+        try
+        {
+            await playbackGate.WaitAsync(deadline.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
     internal static int CalculateAdaptiveNetworkCacheMs(double bytesPerSecond)
     {
         const double mb = 1024d * 1024d;
@@ -225,6 +249,9 @@ internal sealed partial class OptimizedStreamForm
         if (fast >= slow) throw new InvalidOperationException("Adaptive prebuffering no longer starts faster on strong swarms.");
         if (CalculateAdaptiveNetworkCacheMs(16d * 1024 * 1024) >= CalculateAdaptiveNetworkCacheMs(1d * 1024 * 1024))
             throw new InvalidOperationException("Adaptive network caching no longer expands on slower swarms.");
+        double conservative = ChooseConservativeObservedRate(40d * 1024 * 1024, 1d * 1024 * 1024);
+        if (conservative > 1.01d * 1024 * 1024)
+            throw new InvalidOperationException("Adaptive throughput estimation became optimistic compared with the swarm rate.");
         if (CalculateAdaptivePrebufferBytes(4L * 1024 * 1024, 20d * 1024 * 1024, 0) > 4L * 1024 * 1024)
             throw new InvalidOperationException("Adaptive prebuffering exceeded the selected file length.");
     }

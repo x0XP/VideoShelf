@@ -442,6 +442,9 @@ internal sealed partial class OptimizedStreamForm : Form
         TorrentManager? activeManager = manager;
         if (activeManager == null) return;
         var streamProvider = activeManager.StreamProvider ?? throw new InvalidOperationException("Torrent streaming provider is unavailable.");
+        adaptiveNetworkCacheMs = 5000;
+        adaptivePrebufferBytes = 0;
+        adaptiveRateBytesPerSecond = 0;
         long target = CalculatePrebufferBytes(file.Length), readTotal = 0;
         byte[] buffer = new byte[256 * 1024];
         videoOverlay.Visible = true; video.Visible = false;
@@ -454,10 +457,10 @@ internal sealed partial class OptimizedStreamForm : Form
             int read = await warm.ReadAsync(buffer.AsMemory(0, want), cts.Token);
             if (read <= 0) break;
             readTotal += read;
-            double measuredBytes = clock.Elapsed.TotalSeconds > 0.5 ? readTotal / clock.Elapsed.TotalSeconds : 0;
+            double measuredBytes = clock.Elapsed.TotalSeconds >= 1.0 ? readTotal / clock.Elapsed.TotalSeconds : 0;
             double swarmBytes = activeManager.Monitor.DownloadRate;
-            double rateBytes = Math.Max(measuredBytes, swarmBytes);
-            if (readTotal >= 1024L * 1024L && rateBytes > 0)
+            double rateBytes = ChooseConservativeObservedRate(measuredBytes, swarmBytes);
+            if (readTotal >= 2L * 1024L * 1024L && clock.Elapsed.TotalSeconds >= 1.0 && rateBytes > 0)
             {
                 target = CalculateAdaptivePrebufferBytes(file.Length, rateBytes, readTotal);
                 adaptiveNetworkCacheMs = CalculateAdaptiveNetworkCacheMs(rateBytes);
@@ -768,8 +771,13 @@ internal sealed partial class OptimizedStreamForm : Form
 
     void RefreshStats()
     {
-        RefreshAudioChoices();
-        RefreshSubtitleChoices();
+        DateTime now = DateTime.UtcNow;
+        if (now >= nextTrackRefreshUtc)
+        {
+            nextTrackRefreshUtc = now.AddSeconds(1);
+            RefreshAudioChoices();
+            RefreshSubtitleChoices();
+        }
         if (manager != null && selected != null && currentMedia != null)
             status.Text = $"{manager.State} • {manager.Monitor.DownloadRate / (1024d * 1024d):0.0} MB/s • adaptive {adaptiveNetworkCacheMs / 1000d:0.0}s cache";
         if (player != null && player.Length > 0)
@@ -788,15 +796,28 @@ internal sealed partial class OptimizedStreamForm : Form
     {
         if (closing || fixtureMode) return;
         closing=true;e.Cancel=true;Interlocked.Increment(ref playbackRevision);cts.Cancel();uiTimer.Stop();
-        try{await playbackGate.WaitAsync();}catch{}
-        try
+        bool gateHeld=false;
+        try{gateHeld=await WaitForPlaybackGateOnCloseAsync();}catch{}
+        if(gateHeld)
         {
-            try{player?.Stop();}catch{}
-            currentMedia?.Dispose();currentMedia=null;await DisposeHttpStreamAsync();video.MediaPlayer=null;player?.Dispose();vlc?.Dispose();
-            if(session!=null)await session.DisposeAsync();
+            try
+            {
+                try{player?.Stop();}catch{}
+                currentMedia?.Dispose();currentMedia=null;await DisposeHttpStreamAsync();video.MediaPlayer=null;player?.Dispose();vlc?.Dispose();
+                if(session!=null)await session.DisposeAsync();
+            }
+            finally{try{playbackGate.Release();}catch{}}
+            try{playbackGate.Dispose();}catch{}
+            try{cts.Dispose();}catch{}
+            try{Directory.Delete(cache,true);}catch{}
         }
-        finally{try{playbackGate.Release();}catch{}}
-        playbackGate.Dispose();cts.Dispose();try{Directory.Delete(cache,true);}catch{}
+        else
+        {
+            // Cancellation has already been requested. Do not hold the window open forever
+            // if a third-party native/torrent call refuses to return. The process will reclaim
+            // the remaining temporary resources when this host exits.
+            try{video.MediaPlayer=null;}catch{}
+        }
         e.Cancel=false;BeginInvoke(Close);
     }
 }
