@@ -56,11 +56,28 @@ sealed partial class Shelf {
   if(promptInfo!=null&&!IsDisposed)await PromptUpdateAsync(promptInfo);
  }
 
+ static string FormatUserReleaseNotes(string raw){
+  if(string.IsNullOrWhiteSpace(raw))return "No release notes were provided.";
+  var items=new System.Collections.Generic.List<string>();
+  foreach(string rawLine in raw.Replace("\r","").Split('\n')){
+   string line=(rawLine??"").Trim();
+   if(line.Length==0||line.StartsWith("#",StringComparison.Ordinal))continue;
+   if(line.StartsWith("Passed ",StringComparison.OrdinalIgnoreCase)||line.StartsWith("This release ",StringComparison.OrdinalIgnoreCase))continue;
+   if(line.StartsWith("- ",StringComparison.Ordinal))line="• "+line.Substring(2).Trim();
+   else if(items.Count>0)continue;
+   items.Add(line);
+   if(items.Count>=4)break;
+  }
+  string notes=string.Join("\n",items.ToArray());
+  if(notes.Length==0)notes="See the release page for details.";
+  if(notes.Length>550)notes=notes.Substring(0,550).TrimEnd()+"…";
+  return notes;
+ }
+
  async Task PromptUpdateAsync(UpdateInfo info){
   if(info==null||updateBusy)return;
-  string notes=string.IsNullOrWhiteSpace(info.Notes)?"No release notes were provided.":info.Notes.Trim();
-  if(notes.Length>1200)notes=notes.Substring(0,1200).TrimEnd()+"…";
-  string message="VideoShelf v"+info.VersionText+" is available.\n\n"+notes+"\n\nDownload, verify and install this update now?";
+  string notes=FormatUserReleaseNotes(info.Notes);
+  string message="VideoShelf v"+info.VersionText+" is available.\n\nWhat's new:\n"+notes+"\n\nDownload and install this update now?";
   if(MessageBox.Show(this,message,"VideoShelf update available",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)await InstallUpdateAsync(info);
  }
 
