@@ -1,0 +1,59 @@
+name: Harden stream startup
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/harden-stream-startup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Harden stream startup and native cleanup
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/VideoShelf.TransferHost/Player/OptimizedStreamForm.cs')
+          s=p.read_text(encoding='utf-8')
+
+          old='''            await torrentManager.StartAsync();\n'''
+          new='''            await torrentManager.StartAsync();\n            if (closing || cts.IsCancellationRequested) return;\n'''
+          count=s.count(old)
+          if count != 2: raise SystemExit(f'expected 2 torrent start anchors, found {count}')
+          s=s.replace(old,new)
+
+          old='''            var mediaPlayer = new MediaPlayer(localVlc);\n            player = mediaPlayer;\n'''
+          new='''            var mediaPlayer = await CreateMediaPlayerAsync(localVlc, cts.Token);\n            if (closing || cts.IsCancellationRequested) { mediaPlayer.Dispose(); return; }\n            player = mediaPlayer;\n'''
+          if old not in s: raise SystemExit('media player creation anchor missing')
+          s=s.replace(old,new,1)
+
+          old='''        catch (Exception ex)\n        {\n            video.Visible = false; videoOverlay.Visible = true; videoOverlay.Text = "Unable to start this stream"; status.Text = ex.Message;\n            MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);\n        }\n'''
+          new='''        catch (Exception ex)\n        {\n            if (closing || IsDisposed || Disposing) return;\n            video.Visible = false; videoOverlay.Visible = true; videoOverlay.Text = "Unable to start this stream"; status.Text = ex.Message;\n            MessageBox.Show(this, ex.Message, "VideoShelf streaming", MessageBoxButtons.OK, MessageBoxIcon.Error);\n        }\n'''
+          if old not in s: raise SystemExit('startup catch anchor missing')
+          s=s.replace(old,new,1)
+
+          old='''                try { activePlayer.Stop(); } catch { }\n                currentMedia?.Dispose(); currentMedia = null; await DisposeHttpStreamAsync();\n'''
+          new='''                try { await Task.Run(() => { try { activePlayer.Stop(); } catch { } }, cts.Token); }\n                catch (OperationCanceledException) { throw; }\n                currentMedia?.Dispose(); currentMedia = null; await DisposeHttpStreamAsync();\n'''
+          if old not in s: raise SystemExit('playback stop anchor missing')
+          s=s.replace(old,new,1)
+
+          old='''        if(gateHeld)\n        {\n            try\n            {\n                try{player?.Stop();}catch{}\n                currentMedia?.Dispose();currentMedia=null;await DisposeHttpStreamAsync();video.MediaPlayer=null;player?.Dispose();vlc?.Dispose();\n                if(session!=null)await session.DisposeAsync();\n            }\n            finally{try{playbackGate.Release();}catch{}}\n            try{playbackGate.Dispose();}catch{}\n            try{cts.Dispose();}catch{}\n            try{Directory.Delete(cache,true);}catch{}\n        }\n'''
+          new='''        if(gateHeld)\n        {\n            try\n            {\n                try{video.MediaPlayer=null;}catch{}\n                Media? oldMedia=currentMedia;currentMedia=null;\n                MediaPlayer? oldPlayer=player;player=null;\n                LibVLC? oldVlc=vlc;vlc=null;\n                StreamingTorrentSession? oldSession=session;session=null;\n                object? oldHttp=currentHttpStream;currentHttpStream=null;\n                Task cleanup=Task.Run(async () =>\n                {\n                    try{oldPlayer?.Stop();}catch{}\n                    try{oldMedia?.Dispose();}catch{}\n                    if(oldHttp!=null)await DisposeObjectAsync(oldHttp);\n                    try{oldPlayer?.Dispose();}catch{}\n                    try{oldVlc?.Dispose();}catch{}\n                    if(oldSession!=null)try{await oldSession.DisposeAsync();}catch{}\n                });\n                Task finished=await Task.WhenAny(cleanup,Task.Delay(TimeSpan.FromSeconds(4)));\n                if(ReferenceEquals(finished,cleanup))try{await cleanup;}catch{}\n            }\n            finally{try{playbackGate.Release();}catch{}}\n            try{playbackGate.Dispose();}catch{}\n            try{cts.Dispose();}catch{}\n            try{Directory.Delete(cache,true);}catch{}\n        }\n'''
+          if old not in s: raise SystemExit('close cleanup anchor missing')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit hardening
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/VideoShelf.TransferHost/Player/OptimizedStreamForm.cs
+          git commit -m 'Harden stream startup and native cleanup'
+          git push origin HEAD:main
