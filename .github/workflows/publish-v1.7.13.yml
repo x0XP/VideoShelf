@@ -61,7 +61,8 @@ jobs:
           $test = Start-Process -FilePath (Join-Path $transferDir 'VideoShelf.TransferHost.exe') -ArgumentList '--self-test' -WorkingDirectory $transferDir -Wait -PassThru
           if ($test.ExitCode -ne 0) { throw 'TransferHost self-test failed.' }
           foreach ($shot in @('VideoShelf-transfer-download.png','VideoShelf-transfer-player.png','VideoShelf-transfer-files.png')) {
-            if (!(Test-Path $shot) -or (Get-Item $shot).Length -lt 5000) { throw "Transfer UI capture was not created correctly: $shot" }
+            $shotPath = Join-Path $transferDir $shot
+            if (!(Test-Path $shotPath) -or (Get-Item $shotPath).Length -lt 5000) { throw "Transfer UI capture was not created correctly: $shotPath" }
           }
           "VIDEOSHELF_RELEASE_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
