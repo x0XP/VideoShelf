@@ -15,14 +15,14 @@ jobs:
     env:
       RELEASE_VERSION: 1.7.15
       RELEASE_TAG: v1.7.15
-      RELEASE_SOURCE: 547530b49f2430d8e4803c7a6d470f4991fbe98d
+      RELEASE_SOURCE: 01e8c8fab2a4e9120c63e89afec0f4133841bc47
       PREVIOUS_VERSION: 1.7.14
       PREVIOUS_TAG: v1.7.14
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 547530b49f2430d8e4803c7a6d470f4991fbe98d
+          ref: 01e8c8fab2a4e9120c63e89afec0f4133841bc47
           fetch-depth: 1
       - uses: actions/setup-dotnet@v6
         with:
@@ -212,6 +212,7 @@ jobs:
           - Restores online-result screenshots/thumbnails and collection artwork.
           - Uses browser-compatible image requests with DuckDuckGo-to-Bing fallback.
           - Tries both original images and provider thumbnails so one blocked URL cannot blank an entire result.
+          - Falls back to the active search context when a specific torrent/release title is too restrictive to find artwork, preventing blank result cards.
           - Adds a required live-artwork regression that fetches and renders real artwork before image changes can pass.
           - Includes the v1.7.14 update-relaunch hardening and v1.7.13 compact subtitle/volume player controls.
           '@ | Set-Content -Path $notes -Encoding UTF8
