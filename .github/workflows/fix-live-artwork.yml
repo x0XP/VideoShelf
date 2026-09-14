@@ -24,36 +24,19 @@ jobs:
           $thumbPath = 'src/VideoShelf/Search/OnlineThumbnailLookup.cs'
           $text = Get-Content $thumbPath -Raw
 
-          $oldClient = @'
-           var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(15)};
-           c.DefaultRequestHeaders.UserAgent.ParseAdd("VideoShelf/1.7");
-           return c;
-          '@
-          $newClient = @'
-           var c=new HttpClient(h){Timeout=TimeSpan.FromSeconds(15)};
-           c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36");
-           c.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-GB,en;q=0.9");
-           return c;
-          '@
-          if (-not $text.Contains($oldClient)) { throw 'Thumbnail HttpClient block was not found.' }
-          $text = $text.Replace($oldClient,$newClient)
+          $uaPattern = 'c\.DefaultRequestHeaders\.UserAgent\.ParseAdd\("VideoShelf/1\.7"\);'
+          if ($text -notmatch $uaPattern) { throw 'Thumbnail User-Agent line was not found.' }
+          $text = [regex]::Replace($text,$uaPattern,'c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36");' + "`n  c.DefaultRequestHeaders.AcceptLanguage.ParseAdd(\"en-GB,en;q=0.9\");",1)
 
-          $searchMarker = @'
-           return items.Cast<object>().Select(x=>x as Dictionary<string,object>).Where(x=>x!=null).ToList();
-          }
-
-           static void Store
-          '@
-          $searchReplacement = @'
-           return items.Cast<object>().Select(x=>x as Dictionary<string,object>).Where(x=>x!=null).ToList();
-          }
-
+          $storeMarker = 'static void Store(string title,string context,Image image,string source){'
+          if (-not $text.Contains($storeMarker)) { throw 'Store method marker was not found.' }
+          $providerMethods = @'
           static async Task<List<Dictionary<string,object>>> SearchBingRows(string query,CancellationToken ct){
            string cleaned=Regex.Replace((query??""),@"\s*!safeoff\b"," ",RegexOptions.IgnoreCase).Trim();
            string url="https://www.bing.com/images/search?q="+Uri.EscapeDataString(cleaned)+"&form=HDRSC3&first=1&adlt=off";
            string html=Encoding.UTF8.GetString(await Get(url,3*1024*1024,ct).ConfigureAwait(false));
            var rows=new List<Dictionary<string,object>>();
-           foreach(Match match in Regex.Matches(html,@"\bm=\"(?<meta>\{&quot;.*?\})\"",RegexOptions.IgnoreCase|RegexOptions.Singleline)){
+           foreach(Match match in Regex.Matches(html,@"\bm=""(?<meta>\{&quot;.*?\})""",RegexOptions.IgnoreCase|RegexOptions.Singleline)){
             Dictionary<string,object> meta=null;
             try{meta=new JavaScriptSerializer{MaxJsonLength=256*1024}.Deserialize<Dictionary<string,object>>(WebUtility.HtmlDecode(match.Groups["meta"].Value));}catch{}
             if(meta==null)continue;
@@ -83,60 +66,51 @@ jobs:
            return primary??new List<Dictionary<string,object>>();
           }
 
-           static void Store
           '@
-          if (-not $text.Contains($searchMarker)) { throw 'SearchRows insertion marker was not found.' }
-          $text = $text.Replace($searchMarker,$searchReplacement)
+          $text = $text.Replace($storeMarker,$providerMethods+$storeMarker)
 
-          $text = $text.Replace('List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);','List<Dictionary<string,object>> rows=await SearchRowsWithFallback(query,ct).ConfigureAwait(false);')
+          $searchCall='List<Dictionary<string,object>> rows=await SearchRows(query,ct).ConfigureAwait(false);'
+          if (-not $text.Contains($searchCall)) { throw 'FindFromQuery search call was not found.' }
+          $text=$text.Replace($searchCall,'List<Dictionary<string,object>> rows=await SearchRowsWithFallback(query,ct).ConfigureAwait(false);')
 
-          $oldCandidate = @'
-           foreach(var candidate in ranked){
-            ct.ThrowIfCancellationRequested();string image=Value(candidate.Row,"image");if(image.Length==0)image=Value(candidate.Row,"thumbnail");if(image.Length==0)continue;
-            try{
-             Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));
-             string source=Value(candidate.Row,"url");try{Store(title,context,framed,source);}catch{}
-             return new OnlineThumbnailResult{Image=framed,Source=source};
-            }catch(OperationCanceledException){throw;}catch(LookupBlockedException){throw;}catch{}
-           }
-          '@
-          $newCandidate = @'
-           foreach(var candidate in ranked){
-            ct.ThrowIfCancellationRequested();
-            string[] images=new[]{Value(candidate.Row,"image"),Value(candidate.Row,"thumbnail")}.Where(x=>!string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            foreach(string image in images){
-             try{
-              Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));
-              string source=Value(candidate.Row,"url");if(source.Length==0)source=image;try{Store(title,context,framed,source);}catch{}
-              return new OnlineThumbnailResult{Image=framed,Source=source};
-             }catch(OperationCanceledException){throw;}catch(LookupBlockedException){continue;}catch{}
+          $candidatePattern='(?s)  foreach\(var candidate in ranked\)\{.*?\n  \}\n  return null;'
+          if ($text -notmatch $candidatePattern) { throw 'Thumbnail candidate loop was not found.' }
+          $candidateReplacement=@'
+            foreach(var candidate in ranked){
+             ct.ThrowIfCancellationRequested();
+             string[] images=new[]{Value(candidate.Row,"image"),Value(candidate.Row,"thumbnail")}.Where(x=>!string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+             foreach(string image in images){
+              try{
+               Image framed=DecodeAndFrame(await Get(image,5*1024*1024,ct).ConfigureAwait(false));
+               string source=Value(candidate.Row,"url");if(source.Length==0)source=image;try{Store(title,context,framed,source);}catch{}
+               return new OnlineThumbnailResult{Image=framed,Source=source};
+              }catch(OperationCanceledException){throw;}catch(LookupBlockedException){continue;}catch{}
+             }
             }
-           }
+            return null;
           '@
-          if (-not $text.Contains($oldCandidate)) { throw 'Thumbnail candidate loop was not found.' }
-          $text = $text.Replace($oldCandidate,$newCandidate)
+          $text=[regex]::Replace($text,$candidatePattern,$candidateReplacement.TrimEnd(),1)
 
-          $earlyBlock = '   if(DateTime.UtcNow<blockedUntil)return new OnlineThumbnailResult{Error="Thumbnail lookup is temporarily paused after a search-engine access check.",TemporarilyBlocked=true};' + "`n"
-          if (-not $text.Contains($earlyBlock)) { throw 'Global artwork-block short circuit was not found.' }
-          $text = $text.Replace($earlyBlock,'')
+          $earlyPattern='(?m)^\s*if\(DateTime\.UtcNow<blockedUntil\)return new OnlineThumbnailResult\{Error="Thumbnail lookup is temporarily paused after a search-engine access check\.",TemporarilyBlocked=true\};\r?\n'
+          if ($text -notmatch $earlyPattern) { throw 'Global artwork-block short circuit was not found.' }
+          $text=[regex]::Replace($text,$earlyPattern,'',1)
           Set-Content -Path $thumbPath -Value $text -NoNewline -Encoding utf8
 
           $appPath='src/VideoShelf/Application/VideoShelf.cs'
           $app=Get-Content $appPath -Raw
           $selfTestLine='  if(args!=null&&args.Any(a=>a.Equals("--self-test",StringComparison.OrdinalIgnoreCase))){try{AppVersion.SelfTest();UpdateService.SelfTest();UpdateProgressForm.SelfTest();FolderNaming.SelfTest();LibraryMediaIntelligence.SelfTest();BuiltInOnlineSearch.SelfTest();OnlineThumbnailLookup.SelfTest();TransferBridge.SelfTest();Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}'
+          if (-not $app.Contains($selfTestLine)) { throw 'Application self-test marker was not found.' }
           $artworkTest=@'
             int artworkArg=args==null?-1:Array.FindIndex(args,a=>a.Equals("--test-online-artwork",StringComparison.OrdinalIgnoreCase));
             if(artworkArg>=0){try{string query=(artworkArg+1<args.Length&&args[artworkArg+1].Length>0)?args[artworkArg+1]:"Re Zero anime";using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(35)))using(var result=OnlineThumbnailLookup.Find(query,timeout.Token).GetAwaiter().GetResult()){if(result==null||result.Image==null)throw new InvalidOperationException("Live artwork lookup returned no image for "+query+": "+(result==null?"no result":result.Error));Console.WriteLine("Live artwork lookup succeeded for "+query+" via "+result.Source+" ("+result.Image.Width+"x"+result.Image.Height+").");}Environment.Exit(0);}catch(Exception ex){Console.Error.WriteLine(ex);Environment.Exit(1);}return;}
           '@
-          if (-not $app.Contains($selfTestLine)) { throw 'Application self-test marker was not found.' }
           $app=$app.Replace($selfTestLine,$selfTestLine+"`n"+$artworkTest.TrimEnd())
           Set-Content -Path $appPath -Value $app -NoNewline -Encoding utf8
 
           $buildPath='.github/workflows/build.yml'
           $build=Get-Content $buildPath -Raw
-          $buildMarker=@'
-                - name: Verify branded application shell renders
-          '@
+          $buildMarker='      - name: Verify branded application shell renders'
+          if (-not $build.Contains($buildMarker)) { throw 'Build workflow insertion marker was not found.' }
           $liveStep=@'
                 - name: Verify live online artwork retrieval
                   shell: powershell
@@ -150,10 +124,8 @@ jobs:
                     }
                     if (-not $success) { throw 'All live artwork provider smoke tests failed. VideoShelf would ship with blank online artwork.' }
 
-                - name: Verify branded application shell renders
           '@
-          if (-not $build.Contains($buildMarker)) { throw 'Build workflow insertion marker was not found.' }
-          $build=$build.Replace($buildMarker,$liveStep)
+          $build=$build.Replace($buildMarker,$liveStep+$buildMarker)
           Set-Content -Path $buildPath -Value $build -NoNewline -Encoding utf8
 
           git config user.name 'github-actions[bot]'
